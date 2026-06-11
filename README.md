@@ -37,6 +37,9 @@ relative_delta), and `annotated_image_png_b64` (base64 PNG with boxes).
    or a localized tank hotspot, is flagged; severity scales with the gap.
 4. **Report** (`src/thermal/report.py`) draws boxes + emits JSON.
 
+The **pipeline** (`src/thermal/pipeline.py`) chains steps 1→4, and the shared
+`Detection` / `DefectFinding` types live in `src/thermal/schema.py`.
+
 ## Tuning
 Severity thresholds live in `src/thermal/defects.py` (`_WATCH`, `_INVESTIGATE`,
 `_CRITICAL`). If a different camera palette is used, change the colormap name in

@@ -22,8 +22,8 @@ def create_app(detector, c2h: ColorToHeat) -> FastAPI:
 
         findings, _intensity, calib_ok = analyze_image(img_rgb, detector, c2h)
         annotated = annotate(img_bgr, findings)
-        ok, buf = cv2.imencode(".png", annotated)
-        if not ok:
+        encode_ok, buf = cv2.imencode(".png", annotated)
+        if not encode_ok:
             raise HTTPException(status_code=500, detail="failed to encode annotated image")
         b64 = base64.b64encode(buf.tobytes()).decode()
 
