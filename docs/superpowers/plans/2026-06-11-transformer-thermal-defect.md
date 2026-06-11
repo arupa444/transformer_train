@@ -71,10 +71,12 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "python-multipart",
-    "ultralytics",
 ]
 
 [project.optional-dependencies]
+# Heavy: pulls in torch. Only needed to run the REAL detector (after training).
+# The CV core + API + full test suite run without it.
+inference = ["ultralytics"]
 dev = ["pytest", "nbformat", "httpx"]
 
 [tool.pytest.ini_options]
@@ -652,12 +654,12 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'thermal.detector'`
 - [ ] **Step 3: Write `src/thermal/detector.py`**
 
 ```python
-from ultralytics import YOLO
 from thermal.schema import Detection
 
 
 class TransformerDetector:
     def __init__(self, weights_path: str):
+        from ultralytics import YOLO  # lazy import keeps torch out of the test path
         self.model = YOLO(weights_path)
         self.names = self.model.names
 
@@ -993,6 +995,7 @@ pytest -q          # all CV + API tests pass without a model
 
 ## Run the API
 ```bash
+uv pip install -e ".[inference]"   # installs ultralytics/torch for the real detector
 THERMAL_WEIGHTS=models/best.pt uvicorn api:app --reload
 ```
 Then POST an image:
