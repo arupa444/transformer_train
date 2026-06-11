@@ -2,7 +2,7 @@ import os
 import base64
 import numpy as np
 import cv2
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 
 from thermal.colormap import build_lut, ColorToHeat
 from thermal.pipeline import analyze_image
@@ -17,12 +17,14 @@ def create_app(detector, c2h: ColorToHeat) -> FastAPI:
         data = await file.read()
         img_bgr = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
         if img_bgr is None:
-            return {"error": "could not decode image"}
+            raise HTTPException(status_code=422, detail="could not decode image")
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
 
         findings, _intensity, calib_ok = analyze_image(img_rgb, detector, c2h)
         annotated = annotate(img_bgr, findings)
         ok, buf = cv2.imencode(".png", annotated)
+        if not ok:
+            raise HTTPException(status_code=500, detail="failed to encode annotated image")
         b64 = base64.b64encode(buf.tobytes()).decode()
 
         return {
