@@ -36,7 +36,7 @@ def test_analyze_wires_skips_when_fewer_than_two():
 
 def test_analyze_tank_detects_local_hotspot():
     intensity = np.full((100, 100), 0.3, dtype=np.float32)  # warm body
-    intensity[45:55, 45:55] = 0.95                          # tiny hotspot
+    intensity[44:56, 44:56] = 0.95                          # tiny hotspot (12x12 = 1.44%, > 1% needed for p99)
     finding = analyze_tank(intensity, Detection("tank", (0, 0, 100, 100)))
     assert finding.component == "tank"
     assert finding.severity in ("Investigate", "Critical")

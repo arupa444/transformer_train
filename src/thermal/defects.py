@@ -49,6 +49,6 @@ def analyze_tank(intensity: np.ndarray, tank: Detection) -> DefectFinding:
     """Flag a localized hotspot relative to the tank's own body temperature."""
     crop = _crop(intensity, tank.bbox)
     body = float(np.median(crop))
-    hot = float(np.percentile(crop, 99, method="higher"))
+    hot = float(np.percentile(crop, 99))
     delta = hot - body
     return DefectFinding("tank", tank.bbox, severity_from_delta(delta), delta)
