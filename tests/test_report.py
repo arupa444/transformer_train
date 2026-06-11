@@ -17,7 +17,7 @@ def test_to_json_structure():
 
 def test_annotate_keeps_image_shape():
     img = np.zeros((50, 50, 3), dtype=np.uint8)
-    findings = [DefectFinding("tank", (5, 5, 40, 40), "Watch", 0.15)]
+    findings = [DefectFinding("transformer", (5, 5, 40, 40), "Watch", 0.15)]
     out = annotate(img, findings)
     assert out.shape == img.shape
     assert out is not img            # must not mutate input

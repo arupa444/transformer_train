@@ -10,7 +10,7 @@ from api import create_app
 class FakeDetector:
     def detect(self, img_rgb, conf=0.25):
         return [
-            Detection("tank", (0, 0, 100, 100)),
+            Detection("transformer", (0, 0, 100, 100)),
             Detection("wire", (10, 10, 20, 90)),
             Detection("wire", (40, 10, 50, 90)),
         ]
@@ -41,17 +41,17 @@ def test_analyze_endpoint_returns_report():
 
 
 def test_analyze_endpoint_defects_content():
-    """FakeDetector returns 1 tank + 2 wires, so findings must be 3 entries
-    with the expected component values and required keys."""
+    """FakeDetector returns 1 transformer + 2 wires, so findings must be 3
+    entries with the expected component values and required keys."""
     client = _make_client()
     resp = client.post("/analyze", files={"file": ("t.png", _png_bytes(), "image/png")})
     assert resp.status_code == 200
     defects = resp.json()["defects"]
-    # 2 wire findings + 1 tank finding = 3 total
+    # 2 wire findings + 1 transformer finding = 3 total
     assert len(defects) == 3
     components = [d["component"] for d in defects]
     assert components.count("wire") == 2
-    assert components.count("tank") == 1
+    assert components.count("transformer") == 1
     # every entry must have the required schema keys
     for d in defects:
         assert "component" in d

@@ -1,6 +1,6 @@
 import numpy as np
 from thermal.colormap import ColorToHeat
-from thermal.defects import analyze_wires, analyze_tank
+from thermal.defects import analyze_wires, analyze_transformer
 
 # Median Lab-distance above which we consider the palette mismatched.
 CALIBRATION_DIST_THRESHOLD = 20.0
@@ -17,8 +17,8 @@ def analyze_image(img_rgb: np.ndarray, detector,
     calibration_ok = bool(np.median(dist) < CALIBRATION_DIST_THRESHOLD)
 
     wires = [d for d in dets if d.cls == "wire"]
-    tanks = [d for d in dets if d.cls == "tank"]
+    transformers = [d for d in dets if d.cls == "transformer"]
 
     findings = analyze_wires(intensity, wires)
-    findings += [analyze_tank(intensity, t) for t in tanks]
+    findings += [analyze_transformer(intensity, t) for t in transformers]
     return findings, intensity, calibration_ok

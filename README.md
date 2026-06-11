@@ -1,6 +1,6 @@
 # Transformer Thermal Defect Classifier
 
-Detects overheating wires and tank hotspots in colorized thermal images.
+Detects overheating wires and transformer hotspots in colorized thermal images.
 A YOLOv8 detector crops the parts; a CV layer reads relative heat and flags defects.
 
 > Output is **relative severity** (Normal/Watch/Investigate/Critical), not absolute °C.
@@ -14,7 +14,8 @@ pytest -q          # all CV + API tests pass without a model
 ```
 
 ## Get a model
-1. Label images in Roboflow — see `docs/annotation-guide.md`.
+1. Label images with **labelImg** (classes: `transformer`, `wire`) — see
+   `docs/annotation-guide.md`.
 2. Train on Colab — open `notebooks/train_yolo.ipynb`, run all cells.
 3. Download `best.pt` into `models/`.
 
@@ -31,10 +32,11 @@ Returns JSON: `calibration_ok`, `defects[]` (component, bbox, severity,
 relative_delta), and `annotated_image_png_b64` (base64 PNG with boxes).
 
 ## How it works
-1. **Detector** (`src/thermal/detector.py`) finds `tank` and `wire` boxes.
+1. **Detector** (`src/thermal/detector.py`) finds `transformer` and `wire` boxes.
 2. **Colormap** (`src/thermal/colormap.py`) inverts the iron palette to a 0–1 heat map.
 3. **Defects** (`src/thermal/defects.py`): a wire much hotter than its siblings,
-   or a localized tank hotspot, is flagged; severity scales with the gap.
+   or a localized hotspot on the transformer body (background pixels inside the
+   box are excluded via an Otsu split), is flagged; severity scales with the gap.
 4. **Report** (`src/thermal/report.py`) draws boxes + emits JSON.
 
 The **pipeline** (`src/thermal/pipeline.py`) chains steps 1→4, and the shared

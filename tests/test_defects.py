@@ -1,7 +1,7 @@
 import numpy as np
 from thermal.schema import Detection
 from thermal.defects import (
-    severity_from_delta, analyze_wires, analyze_tank,
+    severity_from_delta, analyze_wires, analyze_transformer,
 )
 
 
@@ -34,9 +34,20 @@ def test_analyze_wires_skips_when_fewer_than_two():
     assert analyze_wires(intensity, [Detection("wire", (0, 0, 10, 10))]) == []
 
 
-def test_analyze_tank_detects_local_hotspot():
+def test_analyze_transformer_detects_local_hotspot():
     intensity = np.full((100, 100), 0.3, dtype=np.float32)  # warm body
     intensity[45:55, 45:55] = 0.95                          # tiny hotspot
-    finding = analyze_tank(intensity, Detection("tank", (0, 0, 100, 100)))
-    assert finding.component == "tank"
+    finding = analyze_transformer(intensity, Detection("transformer", (0, 0, 100, 100)))
+    assert finding.component == "transformer"
     assert finding.severity in ("Investigate", "Critical")
+
+
+def test_analyze_transformer_ignores_cold_background():
+    # Box dominated by cold foliage (60%) around a warm body (40%) with only a
+    # mild warm spot — no real defect. The Otsu-based body reference must use the
+    # warm pixels (~0.40), so the delta stays small instead of a false Critical.
+    intensity = np.full((100, 100), 0.05, dtype=np.float32)  # cold background
+    intensity[:, 60:] = 0.40                                 # warm body region
+    intensity[10:20, 80:90] = 0.55                           # mild warm spot
+    finding = analyze_transformer(intensity, Detection("transformer", (0, 0, 100, 100)))
+    assert finding.severity != "Critical"

@@ -15,7 +15,7 @@ class FakeDetector:
 def test_analyze_image_returns_findings_and_calibration():
     img = np.zeros((100, 100, 3), dtype=np.uint8)  # all black -> low intensity
     detector = FakeDetector([
-        Detection("tank", (0, 0, 100, 100)),
+        Detection("transformer", (0, 0, 100, 100)),
         Detection("wire", (10, 10, 20, 90)),
         Detection("wire", (40, 10, 50, 90)),
     ])
@@ -23,5 +23,5 @@ def test_analyze_image_returns_findings_and_calibration():
     findings, intensity, calib_ok = analyze_image(img, detector, c2h)
     assert intensity.shape == (100, 100)
     components = sorted({f.component for f in findings})
-    assert components == ["tank", "wire"]
+    assert components == ["transformer", "wire"]
     assert isinstance(calib_ok, bool)

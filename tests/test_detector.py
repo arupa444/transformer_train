@@ -15,7 +15,7 @@ class _FakeResult:
 
 
 class _FakeYOLO:
-    names = {0: "tank", 1: "wire"}
+    names = {0: "transformer", 1: "wire"}
     def __call__(self, img, conf=0.25):
         return [_FakeResult([
             _FakeBox(0, [1.0, 2.0, 30.0, 40.0], 0.9),
@@ -29,7 +29,7 @@ def test_detector_translates_yolo_output():
     det.names = _FakeYOLO.names
     img = np.zeros((60, 60, 3), dtype=np.uint8)
     dets = det.detect(img)
-    assert dets[0].cls == "tank"
+    assert dets[0].cls == "transformer"
     assert dets[0].bbox == (1, 2, 30, 40)
     assert dets[1].cls == "wire"
     assert abs(dets[1].conf - 0.7) < 1e-6
