@@ -1,0 +1,24 @@
+[project]
+name = "thermal-defect"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "opencv-python-headless",
+    "scikit-image",
+    "scipy",
+    "matplotlib",
+    "fastapi",
+    "uvicorn",
+    "python-multipart",
+]
+
+[project.optional-dependencies]
+# Heavy: pulls in torch. Only needed to run the REAL detector (after training).
+# The CV core + API + full test suite run without it.
+inference = ["ultralytics"]
+dev = ["pytest", "nbformat", "httpx"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "."]
+testpaths = ["tests"]
