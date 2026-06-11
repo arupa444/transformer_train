@@ -5,3 +5,4 @@ runs/
 *.pt
 datasets/
 .DS_Store
+*.egg-info/
