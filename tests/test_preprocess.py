@@ -3,29 +3,28 @@ import pytest
 from thermal.preprocess import preprocess
 
 
-def _low_contrast_image():
-    # A smooth low-contrast gradient (values 100..140) CLAHE should expand.
-    row = np.linspace(100, 140, 64, dtype=np.uint8)
-    gray = np.tile(row, (64, 1))
-    return np.stack([gray, gray, gray], axis=-1)
+def _highlight_clipped_image():
+    # >35% of pixels blown to 255 (highlight_clip > 0.35) -> adaptive CLAHE engages.
+    img = np.full((64, 64, 3), 120, dtype=np.uint8)
+    img[:30, :, :] = 255                      # blown highlights (~47%)
+    img[30:, :, 0] = np.tile(np.arange(64, dtype=np.uint8), (34, 1))  # some structure
+    return img
 
 
 def test_preprocess_preserves_shape_and_dtype():
-    img = _low_contrast_image()
-    out = preprocess(img)
-    assert out.shape == img.shape
+    out = preprocess(_highlight_clipped_image())
+    assert out.shape == (64, 64, 3)
     assert out.dtype == np.uint8
 
 
-def test_preprocess_increases_local_contrast():
-    img = _low_contrast_image()
-    out = preprocess(img)
-    # CLAHE should widen the intensity spread of a low-contrast image.
-    assert out.std() > img.std()
+def test_preprocess_engages_on_clipped_image():
+    img = _highlight_clipped_image()
+    # adaptive CLAHE should modify a clearly highlight-clipped frame
+    assert not np.array_equal(preprocess(img), img)
 
 
 def test_preprocess_is_deterministic():
-    img = _low_contrast_image()
+    img = _highlight_clipped_image()
     assert np.array_equal(preprocess(img), preprocess(img))
 
 

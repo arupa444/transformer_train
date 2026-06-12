@@ -8,6 +8,7 @@ dependencies = [
     "scikit-image",
     "scipy",
     "matplotlib",
+    "pillow",
     "fastapi",
     "uvicorn",
     "python-multipart",

@@ -1,27 +1,21 @@
 import cv2
 import numpy as np
 
-# CLAHE settings: modest clip so we enhance local contrast without amplifying noise.
-_CLAHE_CLIP = 2.0
-_CLAHE_GRID = (8, 8)
+from thermal.data_prep.imaging import clahe_image
 
 
 def preprocess(img_rgb: np.ndarray) -> np.ndarray:
     """Enhance a colorized thermal image for the detector.
 
-    Applies CLAHE (Contrast Limited Adaptive Histogram Equalization) to the L
-    (lightness) channel in LAB space, leaving the color/palette intact. This
-    sharpens local structure (transformer edges, thin conductors) so YOLO
-    localizes better on low-contrast thermal frames, without distorting the
-    global palette the defect layer relies on.
+    Applies the SAME adaptive CLAHE used to build the dataset's `clahe` variant
+    (LAB L-channel; per-image clip from the image profile, near-identity unless the
+    frame is backlit/clipped). Using the identical transform at train and inference
+    avoids train/serve skew. The palette (chroma) is left intact, so the defect
+    layer's relative-heat reading on the raw image stays valid.
 
-    Input/output: HxWx3 uint8 RGB. Must be applied identically at training and
-    inference time to avoid train/serve skew.
+    Input/output: HxWx3 uint8 RGB.
     """
     if img_rgb.ndim != 3 or img_rgb.shape[2] != 3:
         raise ValueError("preprocess expects an HxWx3 RGB image")
-    lab = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2LAB)
-    lightness, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=_CLAHE_CLIP, tileGridSize=_CLAHE_GRID)
-    lightness = clahe.apply(lightness)
-    return cv2.cvtColor(cv2.merge((lightness, a, b)), cv2.COLOR_LAB2RGB)
+    bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+    return cv2.cvtColor(clahe_image(bgr), cv2.COLOR_BGR2RGB)
