@@ -36,8 +36,10 @@ pytest -q          # CV core + cascade pipeline + API tests pass without any mod
    python -m thermal.data_prep.build --subset both
    # -> /Volumes/dronisight/yolo_thermal_transformer  and  /Volumes/dronisight/Yolo_thermal_wire
    ```
-3. **Train** on Colab — `notebooks/train_cascade_yolo26.ipynb` trains both YOLO26x
-   detectors. Download `transformer.pt` + `wire.pt` into `models/`.
+3. **Train + test** on Colab — zip the two dataset folders, upload to Google Drive, and
+   run `notebooks/train_cascade_yolo26.ipynb` (mounts Drive → unzips → clones this repo →
+   trains both YOLO26x → evaluates → runs the cascade on test frames). Weights are saved to
+   Drive; drop `transformer.pt` + `wire.pt` into `models/`.
 
 ## Run the API
 ```bash

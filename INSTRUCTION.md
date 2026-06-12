@@ -99,35 +99,38 @@ cat /Volumes/dronisight/yolo_thermal_transformer/dataset_meta.json
 
 ---
 
-## 4. Train both YOLO26x models (Google Colab)
+## 4. Train + test both YOLO26x models (Google Colab)
 
-### 4a. Zip each dataset's `clahe` variant (smaller upload)
+The notebook does everything (mount Drive → unzip → clone repo → train → evaluate →
+run the cascade). You only zip the two folders and upload them to Drive.
+
+### 4a. Zip the two dataset folders and upload to Google Drive
 ```bash
 cd /Volumes/dronisight
-zip -r transformer.zip yolo_thermal_transformer/data_clahe.yaml \
-    yolo_thermal_transformer/images/*/clahe yolo_thermal_transformer/labels/*/clahe
-zip -r wire.zip Yolo_thermal_wire/data_clahe.yaml \
-    Yolo_thermal_wire/images/*/clahe Yolo_thermal_wire/labels/*/clahe
+zip -r transformer.zip yolo_thermal_transformer
+zip -r wire.zip Yolo_thermal_wire
 ```
+Upload `transformer.zip` and `wire.zip` to your Google Drive (e.g. `MyDrive/`).
 
 ### 4b. Run the notebook
 Open `notebooks/train_cascade_yolo26.ipynb` in Colab →
-**Runtime → Change runtime type → GPU**, then run cells top to bottom:
+**Runtime → Change runtime type → GPU**. In the **paths** cell set `TRANSFORMER_ZIP` /
+`WIRE_ZIP` to where you uploaded the zips, then **Runtime → Run all**. The cells:
 
-1. **install** — pins `ultralytics>=8.4.60` (older silently downgrades YOLO26 → nano)
-   and `pillow==11.2.1` (newer is broken on Colab).
-2. **upload** — select **both** zips.
-3. **fix-yaml** — repoints each `data.yaml` `path:` to `/content`.
-4. **train-transformer**, **train-wire** — one YOLO26x each.
-5. **validate** — prints mAP50 / mAP50-95.
-6. **download** — saves `transformer.pt` and `wire.pt`.
+1. **mount** — mounts Google Drive.
+2. **setup** — pins `ultralytics>=8.4.60` (older silently downgrades YOLO26 → nano) +
+   `pillow==11.2.1`, and clones this repo (for the cascade inference code).
+3. **paths / unzip** — unzips both datasets and repoints each `data.yaml` to `/content`.
+4. **train-transformer / train-wire** — one YOLO26x each.
+5. **save-weights** — copies `transformer.pt` + `wire.pt` to Drive (`thermal_weights/`)
+   and into the cloned repo's `models/` (so they survive a runtime reset).
+6. **eval-map** — per-model mAP on the held-out **test** split.
+7. **cascade-test** — runs the full cascade (this repo's `analyze_image`) on test frames
+   and displays the annotated defects inline; outputs in `/content/cascade_out/`.
 
-### 4c. Put the weights in place
-Copy both files into the repo's `models/` folder:
-```
-models/transformer.pt
-models/wire.pt
-```
+### 4c. Use the weights locally
+They're saved in your Drive `thermal_weights/` folder — download `transformer.pt` +
+`wire.pt` into this repo's `models/` to run the local API (Step 5).
 
 **If a free T4 runs out of memory (OOM):** in the `train-args` cell set
 `MODEL = 'yolo26m.pt'` (or lower `batch=4` → `2`). For ~600–700 training images, `m`/`l`
