@@ -24,13 +24,15 @@ def build_notebook() -> nbf.NotebookNode:
 
     md("intro",
        "# Thermal defect classifier — train + test (YOLO26x + CV)\n"
-       "Runtime → Change runtime type → **GPU** first.\n\n"
+       "**Just: Runtime → Change runtime type → GPU, then Runtime → Run all.**\n\n"
+       "Only requirement: your dataset must be on Google Drive. On your Mac run\n"
+       "```bash\ncd /Volumes/dronisight\nzip -r transformer.zip yolo_thermal_transformer\n```\n"
+       "and upload `transformer.zip` anywhere in **My Drive** (or one folder deep). This "
+       "notebook auto-finds it — no paths to edit.\n\n"
        "**Architecture:** one YOLO26x detector localizes the **transformer**; hot "
-       "conductors/connections and body hotspots are then found by **CV (relative heat)** "
-       "inside the transformer crop — there is **no wire model** (thin clustered conductors "
-       "were not learnable, and CV directly targets 'where is it hot').\n\n"
-       "**You do:** zip the transformer dataset folder and upload it to Drive:\n"
-       "```bash\ncd /Volumes/dronisight\nzip -r transformer.zip yolo_thermal_transformer\n```")
+       "conductors/connections and hotspots are then found by **CV (relative heat)** inside "
+       "the transformer crop — there is **no wire model** (thin clustered conductors weren't "
+       "learnable; CV directly targets 'where is it hot').")
 
     code("mount", "from google.colab import drive\n"
                   "drive.mount('/content/drive')")
@@ -42,21 +44,34 @@ def build_notebook() -> nbf.NotebookNode:
          "import sys; sys.path.insert(0, '/content/transformer_train/src')\n"
          "print('ok')")
 
-    md("paths-md", "### Point these at YOUR upload on Drive")
-    code("paths",
-         "TRANSFORMER_ZIP = '/content/drive/MyDrive/transformer.zip'\n"
-         "DRIVE_WEIGHTS_DIR = '/content/drive/MyDrive/thermal_weights'  # weights persisted here")
-
-    code("unzip",
-         "import zipfile, os, yaml\n"
-         "with zipfile.ZipFile(TRANSFORMER_ZIP) as z:\n"
-         "    z.extractall('/content')\n"
+    code("locate-data",
+         "# Auto-find the dataset on Drive (a 'transformer.zip' or a 'yolo_thermal_transformer'\n"
+         "# folder), in My Drive or one folder deep. No path editing needed.\n"
+         "import glob, os, zipfile, shutil, yaml\n"
          "ROOT = '/content/yolo_thermal_transformer'\n"
+         "DRIVE = '/content/drive/MyDrive'\n"
+         "DRIVE_WEIGHTS_DIR = f'{DRIVE}/thermal_weights'\n"
+         "if not os.path.isdir(ROOT):\n"
+         "    zips = glob.glob(f'{DRIVE}/transformer.zip') + glob.glob(f'{DRIVE}/*/transformer.zip')\n"
+         "    folders = (glob.glob(f'{DRIVE}/yolo_thermal_transformer')\n"
+         "               + glob.glob(f'{DRIVE}/*/yolo_thermal_transformer'))\n"
+         "    if zips:\n"
+         "        print('unzipping', zips[0])\n"
+         "        with zipfile.ZipFile(zips[0]) as z:\n"
+         "            z.extractall('/content')\n"
+         "    elif folders:\n"
+         "        print('copying', folders[0])\n"
+         "        shutil.copytree(folders[0], ROOT)\n"
+         "    else:\n"
+         "        raise FileNotFoundError(\n"
+         "            \"Dataset not found. Upload 'transformer.zip' (zip of the \"\n"
+         "            \"yolo_thermal_transformer folder) anywhere in your Google Drive.\")\n"
+         "assert os.path.isdir(f'{ROOT}/images'), f'unexpected dataset layout under {ROOT}'\n"
          "p = f'{ROOT}/data_clahe.yaml'\n"
          "d = yaml.safe_load(open(p)); d['path'] = ROOT\n"
          "yaml.safe_dump(d, open(p, 'w'), sort_keys=False)\n"
          "DATA_YAML = p\n"
-         "print(d)")
+         "print('dataset ready ->', d)")
 
     code("train-args",
          "# Thermal-tuned. NO hue jitter (palette = heat). x is heavy for ~600 imgs ->\n"
