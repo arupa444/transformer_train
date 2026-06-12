@@ -43,6 +43,23 @@ def test_wire_boxes_mapped_back_to_full_frame():
     assert (55, 55, 65, 65) in wire_boxes
 
 
+def test_detector_receives_bgr_not_rgb():
+    # The models train on cv2/BGR arrays; the detector must be fed BGR, not RGB.
+    # Pass solid RED in RGB and confirm it arrives with red in BGR's red channel (idx 2).
+    img_rgb = np.zeros((40, 40, 3), dtype=np.uint8)
+    img_rgb[..., 0] = 255  # R
+    captured = {}
+
+    class Capture:
+        def detect(self, img, conf=0.25):
+            captured["img"] = img.copy()
+            return []
+
+    analyze_image(img_rgb, Capture(), Capture(), ColorToHeat(build_lut("inferno")))
+    got = captured["img"]
+    assert got[..., 2].mean() > got[..., 0].mean()  # red in channel 2 => BGR (not RGB)
+
+
 def test_no_transformer_means_no_findings():
     img = np.zeros((100, 100, 3), dtype=np.uint8)
     findings, _, _ = analyze_image(img, FakeDetector([]), FakeDetector([]),

@@ -76,35 +76,38 @@ def build_notebook() -> nbf.NotebookNode:
          "# Thermal-tuned. NO hue jitter (palette = heat). x is heavy for ~600-700 imgs ->\n"
          "# early stopping + regularization. On OOM: MODEL='yolo26m.pt' or lower batch.\n"
          "MODEL = 'yolo26x.pt'\n"
-         "def train_args(data_yaml, scale):\n"
+         "def train_args(data_yaml, scale, mosaic):\n"
          "    return dict(data=data_yaml, epochs=150, imgsz=1280, batch=4, seed=1337,\n"
          "                hsv_h=0.0, hsv_s=0.2, hsv_v=0.3,\n"
          "                fliplr=0.5, flipud=0.0, degrees=10.0, translate=0.1, scale=scale,\n"
-         "                mosaic=1.0, close_mosaic=10,\n"
+         "                mosaic=mosaic, close_mosaic=(10 if mosaic else 0),\n"
          "                weight_decay=0.0005, dropout=0.1, cos_lr=True, patience=30, amp=True)")
 
     code("train-transformer",
          "from ultralytics import YOLO\n"
-         "m_t = YOLO(MODEL)  # full frame, big object\n"
+         "m_t = YOLO(MODEL)  # full frame, big object: mosaic + moderate scale jitter are fine\n"
          "m_t.train(project='runs/transformer', name='yolo26x',\n"
-         "          **train_args(DATA_YAML['transformer'], scale=0.5))")
+         "          **train_args(DATA_YAML['transformer'], scale=0.5, mosaic=1.0))")
 
     code("train-wire",
-         "m_w = YOLO(MODEL)  # transformer crops, thin objects -> wider scale jitter\n"
+         "# Wire boxes are mostly TINY (thin conductors). mosaic tiles 4 images -> objects ~4x\n"
+         "# smaller -> it destroys small-object learning. Turn mosaic OFF and use gentle scale\n"
+         "# jitter. All labels are kept.\n"
+         "m_w = YOLO(MODEL)\n"
          "m_w.train(project='runs/wire', name='yolo26x',\n"
-         "          **train_args(DATA_YAML['wire'], scale=0.9))")
+         "          **train_args(DATA_YAML['wire'], scale=0.3, mosaic=0.0))")
 
     code("save-weights",
          "# Persist weights to Drive (survive runtime resets) and into the repo's models/.\n"
+         "# Use the trainer's own best-checkpoint path (robust to wherever Ultralytics saved).\n"
          "import os, shutil\n"
          "os.makedirs(DRIVE_WEIGHTS_DIR, exist_ok=True)\n"
          "os.makedirs('/content/transformer_train/models', exist_ok=True)\n"
-         "T = 'runs/transformer/yolo26x/weights/best.pt'\n"
-         "W = 'runs/wire/yolo26x/weights/best.pt'\n"
-         "for src, name in ((T, 'transformer.pt'), (W, 'wire.pt')):\n"
-         "    shutil.copy(src, f'{DRIVE_WEIGHTS_DIR}/{name}')\n"
-         "    shutil.copy(src, f'/content/transformer_train/models/{name}')\n"
-         "print('weights saved to', DRIVE_WEIGHTS_DIR, 'and repo models/')")
+         "for best, name in ((str(m_t.trainer.best), 'transformer.pt'),\n"
+         "                   (str(m_w.trainer.best), 'wire.pt')):\n"
+         "    shutil.copy(best, f'{DRIVE_WEIGHTS_DIR}/{name}')\n"
+         "    shutil.copy(best, f'/content/transformer_train/models/{name}')\n"
+         "    print('saved', name, 'from', best)")
 
     md("eval-md", "## Test\n"
                   "Per-model mAP on the held-out **test** split, then the full **cascade** "
@@ -124,8 +127,9 @@ def build_notebook() -> nbf.NotebookNode:
          "from thermal.pipeline import analyze_image\n"
          "from thermal.report import annotate, to_json\n"
          "\n"
-         "td = YoloDetector('runs/transformer/yolo26x/weights/best.pt')\n"
-         "wd = YoloDetector('runs/wire/yolo26x/weights/best.pt')\n"
+         "# load the weights the save-weights cell copied into the repo (robust path)\n"
+         "td = YoloDetector('/content/transformer_train/models/transformer.pt')\n"
+         "wd = YoloDetector('/content/transformer_train/models/wire.pt')\n"
          "c2h = ColorToHeat(build_lut('inferno'))\n"
          "\n"
          "# run on the ORIG test frames (raw palette -> true heat)\n"

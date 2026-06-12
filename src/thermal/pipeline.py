@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 
 from thermal.colormap import ColorToHeat
@@ -30,18 +31,22 @@ def analyze_image(img_rgb: np.ndarray, transformer_detector, wire_detector,
     3. Read RELATIVE heat on the raw palette: a localized transformer hotspot, and
        each transformer's wires compared against their own siblings.
 
-    `*_detector` are anything exposing `detect(img_rgb) -> list[Detection]`.
+    `*_detector` are anything exposing `detect(img) -> list[Detection]`, fed a BGR
+    array (Ultralytics/cv2 convention — same channel order the models trained on).
     """
-    proc = preprocess(img_rgb)
+    # Adaptive CLAHE matches the `clahe` training variant; convert to BGR for the
+    # detectors. Feeding RGB here silently swaps R/B and wrecks detection on a
+    # palette image (the colors ARE the signal) — the cause of "boxes all wrong".
+    proc_bgr = cv2.cvtColor(preprocess(img_rgb), cv2.COLOR_RGB2BGR)
     h, w = img_rgb.shape[:2]
-    intensity, dist = c2h.to_intensity(img_rgb)
+    intensity, dist = c2h.to_intensity(img_rgb)   # heat read on the RAW RGB palette
     calibration_ok = bool(np.median(dist) < CALIBRATION_DIST_THRESHOLD)
 
     findings = []
-    for t in transformer_detector.detect(proc):
+    for t in transformer_detector.detect(proc_bgr):
         findings.append(analyze_transformer(intensity, t))
         x0, y0, x1, y1 = _pad_clip(t.bbox, pad, w, h)
-        crop = proc[y0:y1, x0:x1]
+        crop = proc_bgr[y0:y1, x0:x1]
         if crop.size == 0:
             continue
         wires_full = [
