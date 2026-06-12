@@ -6,11 +6,11 @@ from thermal.defects import severity_from_delta, find_hotspots, _pad_box
 
 
 def test_severity_buckets():
-    # calibrated: normal warm connections (< 0.45) don't alarm; defects are the tail
-    assert severity_from_delta(0.40) == "Normal"
-    assert severity_from_delta(0.50) == "Watch"
-    assert severity_from_delta(0.58) == "Investigate"
-    assert severity_from_delta(0.70) == "Critical"
+    # recall-tuned floors (0.38/0.48/0.58): typical warm connection (<0.38) doesn't alarm
+    assert severity_from_delta(0.30) == "Normal"
+    assert severity_from_delta(0.42) == "Watch"
+    assert severity_from_delta(0.52) == "Investigate"
+    assert severity_from_delta(0.65) == "Critical"
 
 
 def test_severity_nonfinite_is_normal_not_critical():

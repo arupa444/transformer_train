@@ -7,11 +7,15 @@ from skimage.filters import threshold_otsu
 from thermal.schema import DefectFinding
 
 # Severity by how far a hot region sits above the transformer body, in 0..1 intensity
-# units. CALIBRATED on 755 real thermal crops: a NORMAL warm conductor/connection sits
-# ~+0.22..+0.44 above body (p50=0.35, p75=0.44), while genuine hot-wire DEFECTS form the
-# tail at ~+0.55..+0.65. So the detection floor is set above the normal-warm band, not at
-# an arbitrary small value (the old +0.10 flagged ~every connection). Tunable per camera.
-_WATCH, _INVESTIGATE, _CRITICAL = 0.45, 0.55, 0.62
+# units. CALIBRATED on 755 real crops: a NORMAL warm conductor/connection sits ~+0.22..+0.44
+# above body (p50=0.35), defects form the tail at ~+0.55..+0.65. THESE VALUES TRADE RECALL
+# FOR PRECISION (user choice): the floor is 0.38 so a white-hot connection on an already-warm
+# body (whose relative margin compresses to ~+0.40) is still caught as Watch — at the cost of
+# flagging the top ~30% of warm connections. NOTE: severity here is RELATIVE contrast, not
+# absolute danger — the colorized palette is auto-gained per frame so the same physical fault
+# grades lower on a hot body than on a cool one. Absolute °C (radiometric data) is the real
+# cure; lower _HOTSPOT_MARGIN for more recall, raise it for fewer false alarms.
+_WATCH, _INVESTIGATE, _CRITICAL = 0.38, 0.48, 0.58
 
 # A trustworthy warm/background split needs at least this many warm pixels.
 _MIN_WARM_FRACTION = 0.05

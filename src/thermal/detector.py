@@ -1,8 +1,11 @@
 import numpy as np
 from thermal.schema import Detection
 
-# Ultralytics' own default confidence threshold; pass-through, not arbitrary.
-_DEFAULT_CONF = 0.25
+# Detector confidence floor. Lowered below Ultralytics' 0.25 default because transformers
+# that are distant/occluded/cluttered are detected only weakly (~0.12-0.15 conf) and the
+# 0.25 cutoff dropped them entirely (missing the whole unit -> missing its faults). 0.12
+# trades some precision (occasional spurious box) for recall. Tunable per deployment.
+_DEFAULT_CONF = 0.12
 
 
 class YoloDetector:
