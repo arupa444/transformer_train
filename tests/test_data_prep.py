@@ -54,6 +54,43 @@ def test_assign_groups_splits_on_time_gap():
     assert g["DJI_20260101130000_0003_T.JPG"] != g["DJI_20260101120000_0001_T.JPG"]
 
 
+def test_grouped_split_tiny_source_fills_val_before_test():
+    # 3 groups, one source: must give train>=1 and val>=1 (val before test), no leakage
+    items = [{"image": f"i{i}", "key": f"k{i}", "group": f"src:{i}", "source": "src"}
+             for i in range(3)]
+    split = grouped_split(items, {"train": 0.8, "val": 0.15, "test": 0.05}, seed=1337)
+    assert len(split["train"]) >= 1
+    assert len(split["val"]) >= 1
+    assert sum(len(v) for v in split.values()) == 3
+    groups = {sp: {it["group"] for it in its} for sp, its in split.items()}
+    assert groups["train"].isdisjoint(groups["val"])
+    assert groups["train"].isdisjoint(groups["test"])
+
+
+def test_make_anchor_crops_fallback_when_no_anchor():
+    # No transformer anchor present -> falls back to union of wire boxes as the crop
+    ann = Annotation(1000, 1000, [
+        Box("wire", 100, 100, 150, 160),
+        Box("wire", 300, 300, 340, 380),
+    ])
+    crops = make_anchor_crops(ann, ["wire"], ["transformer"], pad_frac=0.0, min_visible=0.3)
+    assert len(crops) == 1
+    _, cann = crops[0]
+    assert len(cann.boxes) == 2  # both wires kept, remapped into the union crop
+
+
+def test_make_anchor_crops_drops_partially_visible_wire():
+    ann = Annotation(1000, 1000, [
+        Box("transformer", 200, 200, 600, 600),
+        Box("wire", 580, 300, 700, 360),  # straddles the right edge; mostly outside
+    ])
+    # mostly-outside wire dropped at high min_visible, kept at low
+    assert make_anchor_crops(ann, ["wire"], ["transformer"], 0.0, 0.8) == [] \
+        or len(make_anchor_crops(ann, ["wire"], ["transformer"], 0.0, 0.8)[0][1].boxes) == 0
+    kept = make_anchor_crops(ann, ["wire"], ["transformer"], 0.0, 0.1)
+    assert len(kept) == 1 and len(kept[0][1].boxes) == 1
+
+
 def test_make_anchor_crops_remaps_wire_into_transformer_crop():
     ann = Annotation(1000, 1000, [
         Box("transformer", 200, 200, 600, 600),   # anchor

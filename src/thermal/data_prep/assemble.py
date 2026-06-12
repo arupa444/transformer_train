@@ -134,8 +134,13 @@ def grouped_split(items, ratios, seed):
         groups = sorted(groups)
         rng.shuffle(groups)
         n = len(groups)
-        n_train = max(round(n * ratios["train"]), 1) if n else 0
-        n_val = round(n * ratios["val"])
+        if not n:
+            continue
+        n_train = min(max(round(n * ratios["train"]), 1), n)
+        rem = n - n_train
+        n_val = min(round(n * ratios["val"]), rem)
+        if n_val == 0 and rem >= 1:   # tiny source: fill val before test
+            n_val = 1
         buckets = {"train": groups[:n_train], "val": groups[n_train:n_train + n_val],
                    "test": groups[n_train + n_val:]}
         for split_name, gs in buckets.items():

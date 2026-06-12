@@ -17,6 +17,8 @@ class ColorToHeat:
 
     def __init__(self, lut_rgb: np.ndarray):
         self.n = lut_rgb.shape[0]
+        if self.n < 2:
+            raise ValueError("LUT must have >= 2 colors (intensity = idx / (n-1))")
         lab = color.rgb2lab(lut_rgb.reshape(-1, 1, 3)).reshape(-1, 3)
         self._tree = cKDTree(lab)
 

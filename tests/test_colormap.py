@@ -1,5 +1,12 @@
 import numpy as np
+import pytest
 from thermal.colormap import build_lut, ColorToHeat
+
+
+def test_single_color_lut_rejected():
+    # n=1 would make intensity = idx/(n-1) divide by zero -> must raise, not emit NaN
+    with pytest.raises(ValueError):
+        ColorToHeat(build_lut("inferno", n=1))
 
 
 def test_intensity_monotonic_on_palette_gradient():

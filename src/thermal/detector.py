@@ -14,9 +14,10 @@ class YoloDetector:
         self.model = YOLO(weights_path)
         self.names = self.model.names
 
-    def detect(self, img_rgb: np.ndarray,
+    def detect(self, img_bgr: np.ndarray,
                conf: float = _DEFAULT_CONF) -> list[Detection]:
-        result = self.model(img_rgb, conf=conf)[0]
+        # img_bgr: BGR uint8 (cv2/Ultralytics convention — same order training used)
+        result = self.model(img_bgr, conf=conf)[0]
         dets = []
         for box in result.boxes:
             cls_name = self.names[int(box.cls[0])]

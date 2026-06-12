@@ -15,7 +15,9 @@ def create_app(transformer_detector, wire_detector, c2h: ColorToHeat) -> FastAPI
     @app.post("/analyze")
     async def analyze(file: UploadFile = File(...)):
         data = await file.read()
-        img_bgr = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+        arr = np.frombuffer(data, np.uint8)
+        # guard empty/short buffers: cv2.imdecode raises (not returns None) on empty input
+        img_bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR) if arr.size else None
         if img_bgr is None:
             raise HTTPException(status_code=422, detail="could not decode image")
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)

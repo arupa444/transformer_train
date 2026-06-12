@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 from skimage.filters import threshold_otsu
 from thermal.schema import Detection, DefectFinding
@@ -15,6 +17,8 @@ _MIN_WARM_PIXELS = 16
 
 
 def severity_from_delta(delta: float) -> str:
+    if not math.isfinite(delta):   # guard NaN/inf -> never silently report Critical
+        return "Normal"
     if delta < _WATCH:
         return "Normal"
     if delta < _INVESTIGATE:
@@ -27,6 +31,8 @@ def severity_from_delta(delta: float) -> str:
 def _crop(intensity: np.ndarray, bbox: tuple[int, int, int, int]) -> np.ndarray:
     h, w = intensity.shape
     x1, y1, x2, y2 = bbox
+    x1, x2 = min(x1, x2), max(x1, x2)   # normalize a reversed bbox before clamping
+    y1, y2 = min(y1, y2), max(y1, y2)
     x1 = max(0, min(int(x1), w - 1))
     y1 = max(0, min(int(y1), h - 1))
     x2 = max(x1 + 1, min(int(x2), w))
@@ -61,7 +67,11 @@ def _body_reference(flat: np.ndarray) -> float:
     sky) around the unit. We split warm equipment from cold background with an
     Otsu threshold and take the median of the warm side, so background cannot
     drag the reference down and inflate the hotspot delta into a false alarm.
-    Falls back to the overall median when the crop is not clearly bimodal.
+    Falls back to the overall median when the warm cluster is too small to trust
+    (Known edge: a crop that is almost entirely cold background with a 1-5% warm
+    sliver falls back to the cold median and can over-flag — but that only arises
+    from a degenerate transformer box, i.e. a bad upstream detection, not a real
+    transformer crop which is warm-body-dominant.)
     """
     if flat.size == 0:
         return 0.0
@@ -70,6 +80,7 @@ def _body_reference(flat: np.ndarray) -> float:
     try:
         threshold = threshold_otsu(flat)
     except ValueError:
+        # not dead code: tiny-range float32 arrays pass the ptp guard but still raise
         return float(np.median(flat))
     warm = flat[flat >= threshold]
     if warm.size < max(_MIN_WARM_PIXELS, int(flat.size * _MIN_WARM_FRACTION)):

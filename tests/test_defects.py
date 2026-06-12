@@ -12,6 +12,21 @@ def test_severity_buckets():
     assert severity_from_delta(0.50) == "Critical"
 
 
+def test_severity_nonfinite_is_normal_not_critical():
+    # a non-finite delta (NaN/inf) must never silently become Critical
+    assert severity_from_delta(float("nan")) == "Normal"
+    assert severity_from_delta(float("inf")) == "Normal"
+
+
+def test_crop_normalizes_reversed_bbox():
+    from thermal.defects import _crop
+    intensity = np.zeros((100, 100), dtype=np.float32)
+    intensity[10:90, 40:60] = 1.0
+    # reversed x (60>40) must still crop the 40..60 region, not a 1px sliver
+    crop = _crop(intensity, (60, 10, 40, 90))
+    assert crop.shape[1] >= 15 and float(crop.mean()) > 0.5
+
+
 def test_analyze_wires_flags_the_hot_one():
     intensity = np.zeros((100, 100), dtype=np.float32)
     # Three wire regions: two cool (~0.2), one hot (~0.9).

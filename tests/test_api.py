@@ -11,7 +11,7 @@ class FakeDetector:
     def __init__(self, dets):
         self._dets = dets
 
-    def detect(self, img_rgb, conf=0.25):
+    def detect(self, img_bgr, conf=0.25):
         return self._dets
 
 
@@ -72,4 +72,11 @@ def test_analyze_invalid_image_returns_422():
         "/analyze",
         files={"file": ("bad.png", b"not an image", "image/png")},
     )
+    assert resp.status_code == 422
+
+
+def test_analyze_empty_upload_returns_422():
+    """Empty file must return 422, not 500 (cv2.imdecode raises on empty input)."""
+    client = _make_client()
+    resp = client.post("/analyze", files={"file": ("empty.png", b"", "image/png")})
     assert resp.status_code == 422

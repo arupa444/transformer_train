@@ -9,7 +9,7 @@ class FakeDetector:
     def __init__(self, dets):
         self._dets = dets
 
-    def detect(self, img_rgb, conf=0.25):
+    def detect(self, img_bgr, conf=0.25):
         return self._dets
 
 
