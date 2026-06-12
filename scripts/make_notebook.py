@@ -1,4 +1,8 @@
-"""Generate notebooks/train_yolo.ipynb for Google Colab YOLOv8 training."""
+"""Generate notebooks/train_cascade_yolo26.ipynb — trains the TWO cascade detectors
+(transformer + wire) with YOLO26x on Google Colab.
+
+Regenerate after editing:  python scripts/make_notebook.py
+"""
 import nbformat as nbf
 
 
@@ -6,107 +10,104 @@ def build_notebook() -> nbf.NotebookNode:
     nb = nbf.v4.new_notebook()
     cells = []
 
-    cell = nbf.v4.new_markdown_cell(
-        "# Train YOLO26x — Transformer Parts (transformer, wire)\n"
-        "Runtime → Change runtime type → **GPU** before running.\n\n"
-        "Trains from the consolidated dataset built by `scripts/build_dataset.py` "
-        "(4 annotators merged, labels remapped to `transformer`/`wire`, images "
-        "already CLAHE-preprocessed — **do not** preprocess again here)."
-    )
-    cell["id"] = "intro-header"
-    cells.append(cell)
+    def md(id_, text):
+        c = nbf.v4.new_markdown_cell(text); c["id"] = id_; cells.append(c)
 
-    cell = nbf.v4.new_code_cell(
-        "# YOLO26 needs a recent ultralytics; latest pip has it.\n"
-        "!pip install -q -U ultralytics"
-    )
-    cell["id"] = "install-deps"
-    cells.append(cell)
+    def code(id_, src):
+        c = nbf.v4.new_code_cell(src); c["id"] = id_; cells.append(c)
 
-    cell = nbf.v4.new_markdown_cell(
-        "Upload `YOLO_thermal.zip` — zip the **contents** of the `YOLO_thermal/` "
-        "folder so `train/` and `valid/` (each with `images/` + `labels/`) sit at "
-        "the zip root."
-    )
-    cell["id"] = "upload-header"
-    cells.append(cell)
+    md("intro",
+       "# Train the thermal cascade — YOLO26x (transformer + wire)\n"
+       "Runtime → Change runtime type → **GPU** first.\n\n"
+       "Trains **two single-class detectors** on the datasets built by "
+       "`thermal.data_prep.build` (already deduped + CLAHE-preprocessed):\n"
+       "- `transformer` — full frame\n"
+       "- `wire` — on transformer crops (the cascade)\n\n"
+       "Both train on the `clahe` image variant, with thermal-tuned augmentation "
+       "(**no hue jitter** — it would scramble the heat palette).")
 
-    cell = nbf.v4.new_code_cell(
-        "import zipfile, os\n"
-        "from google.colab import files\n"
-        "uploaded = files.upload()  # pick your dataset.zip\n"
-        "zip_name = next(iter(uploaded))\n"
-        'with zipfile.ZipFile(zip_name) as z:\n'
-        '    z.extractall("/content/dataset")\n'
-        'print("extracted:", os.listdir("/content/dataset"))'
-    )
-    cell["id"] = "upload-dataset"
-    cells.append(cell)
+    code("install",
+         "# YOLO26 gotchas (learned on Colab): 8.3.x silently degrades yolo26 -> nano,\n"
+         "# and pillow 11.3+ is broken on Colab. Pin both.\n"
+         '!pip install -q -U "ultralytics>=8.4.60" "pillow==11.2.1"')
 
-    cell = nbf.v4.new_code_cell(
-        "# Write the dataset config. names order MUST match labelImg classes.txt.\n"
-        'data_yaml = "/content/dataset/data.yaml"\n'
-        'with open(data_yaml, "w") as f:\n'
-        '    f.write(\n'
-        '        "path: /content/dataset\\n"\n'
-        '        "train: train/images\\n"\n'
-        '        "val: valid/images\\n"\n'
-        '        "nc: 2\\n"\n'
-        "        \"names: ['transformer', 'wire']\\n\"\n"
-        "    )\n"
-        "print(open(data_yaml).read())"
-    )
-    cell["id"] = "write-data-yaml"
-    cells.append(cell)
+    md("upload-md",
+       "### Upload the datasets\n"
+       "On your machine, zip each dataset's **clahe** variant (smaller upload):\n"
+       "```bash\n"
+       "cd /Volumes/dronisight\n"
+       "zip -r transformer.zip yolo_thermal_transformer/data_clahe.yaml \\\n"
+       "    yolo_thermal_transformer/images/*/clahe yolo_thermal_transformer/labels/*/clahe\n"
+       "zip -r wire.zip Yolo_thermal_wire/data_clahe.yaml \\\n"
+       "    Yolo_thermal_wire/images/*/clahe Yolo_thermal_wire/labels/*/clahe\n"
+       "```\n"
+       "Then run the next cell and pick **both** zips.")
 
-    cell = nbf.v4.new_code_cell(
-        "from ultralytics import YOLO\n"
-        '# YOLO26x: largest, NMS-free end-to-end detector. Heavy for ~1.5k images,\n'
-        "# so we lean on augmentation + early stopping to avoid overfitting.\n"
-        'model = YOLO("yolo26x.pt")\n'
-        "model.train(\n"
-        "    data=data_yaml,\n"
-        "    epochs=150, imgsz=640, patience=30,\n"
-        "    batch=8,            # x is heavy: drop to 4 if a T4 OOMs, or batch=-1 to auto-fit\n"
-        "    # Thermal-tuned aug: NO hue shift (it would scramble the heat palette);\n"
-        "    # geometric aug + mosaic help the minority 'transformer' class generalize.\n"
-        "    hsv_h=0.0, hsv_s=0.2, hsv_v=0.2,\n"
-        "    fliplr=0.5, flipud=0.0, degrees=5.0,\n"
-        "    mosaic=1.0, close_mosaic=10,\n"
-        ")"
-    )
-    cell["id"] = "train-model"
-    cells.append(cell)
+    code("upload",
+         "import zipfile, os\n"
+         "from google.colab import files\n"
+         "for name, up in files.upload().items():\n"
+         "    with zipfile.ZipFile(name) as z:\n"
+         "        z.extractall('/content')\n"
+         "    print('extracted', name)\n"
+         "print(os.listdir('/content'))")
 
-    cell = nbf.v4.new_code_cell(
-        "metrics = model.val()\n"
-        'print("mAP50-95:", metrics.box.map)\n'
-        'print("mAP50:   ", metrics.box.map50)'
-    )
-    cell["id"] = "validate-model"
-    cells.append(cell)
+    code("fix-yaml",
+         "# The build-time data.yaml `path:` points at the build machine; repoint to /content.\n"
+         "import yaml, glob\n"
+         "DATASETS = {\n"
+         "    'transformer': '/content/yolo_thermal_transformer',\n"
+         "    'wire': '/content/Yolo_thermal_wire',\n"
+         "}\n"
+         "DATA_YAML = {}\n"
+         "for key, root in DATASETS.items():\n"
+         "    p = f'{root}/data_clahe.yaml'\n"
+         "    d = yaml.safe_load(open(p)); d['path'] = root\n"
+         "    yaml.safe_dump(d, open(p, 'w'), sort_keys=False)\n"
+         "    DATA_YAML[key] = p\n"
+         "    print(key, '->', d)")
 
-    cell = nbf.v4.new_code_cell(
-        "# Optional: eyeball predictions on the validation images (saved under runs/detect/predict).\n"
-        'model.predict("/content/dataset/valid/images", conf=0.25, save=True)'
-    )
-    cell["id"] = "visual-check"
-    cells.append(cell)
+    code("train-args",
+         "# Thermal-tuned training. NO hue jitter (palette = heat). x is heavy for ~600-700\n"
+         "# train imgs -> early stopping + regularization. Drop to yolo26m.pt / lower batch on OOM.\n"
+         "MODEL = 'yolo26x.pt'\n"
+         "def train_args(data_yaml, scale):\n"
+         "    return dict(\n"
+         "        data=data_yaml, epochs=150, imgsz=1280, batch=4, seed=1337,\n"
+         "        hsv_h=0.0, hsv_s=0.2, hsv_v=0.3,\n"
+         "        fliplr=0.5, flipud=0.0, degrees=10.0, translate=0.1, scale=scale,\n"
+         "        mosaic=1.0, close_mosaic=10,\n"
+         "        weight_decay=0.0005, dropout=0.1, cos_lr=True, patience=30, amp=True,\n"
+         "    )")
 
-    cell = nbf.v4.new_code_cell(
-        "# Download the trained weights to your machine.\n"
-        "from google.colab import files\n"
-        'files.download("runs/detect/train/weights/best.pt")'
-    )
-    cell["id"] = "download-weights"
-    cells.append(cell)
+    code("train-transformer",
+         "from ultralytics import YOLO\n"
+         "# full frame, large object -> moderate scale jitter\n"
+         "m_t = YOLO(MODEL)\n"
+         "m_t.train(project='runs/transformer', name='yolo26x', **train_args(DATA_YAML['transformer'], scale=0.5))")
 
-    cell = nbf.v4.new_markdown_cell(
-        "Put the downloaded `best.pt` into your project's `models/` folder, then run "
-        "the API: `THERMAL_WEIGHTS=models/best.pt uvicorn api:app --reload`."
-    )
-    cell["id"] = "next-steps"
-    cells.append(cell)
+    code("train-wire",
+         "# transformer crops, thin objects -> wider scale jitter to mimic crop zoom\n"
+         "m_w = YOLO(MODEL)\n"
+         "m_w.train(project='runs/wire', name='yolo26x', **train_args(DATA_YAML['wire'], scale=0.9))")
+
+    code("validate",
+         "for tag, m in (('transformer', m_t), ('wire', m_w)):\n"
+         "    r = m.val()\n"
+         "    print(f'{tag}: mAP50-95={r.box.map:.3f}  mAP50={r.box.map50:.3f}')")
+
+    code("download",
+         "# Download both best.pt, renamed for the cascade.\n"
+         "import shutil\n"
+         "from google.colab import files\n"
+         "shutil.copy('runs/transformer/yolo26x/weights/best.pt', 'transformer.pt')\n"
+         "shutil.copy('runs/wire/yolo26x/weights/best.pt', 'wire.pt')\n"
+         "files.download('transformer.pt'); files.download('wire.pt')")
+
+    md("next",
+       "Put `transformer.pt` and `wire.pt` into the repo's `models/` folder, then run the "
+       "cascade inference / API. Watch `results.png` per run: a widening train-vs-val gap = "
+       "overfitting → try `MODEL='yolo26m.pt'` or fewer epochs.")
 
     nb["cells"] = cells
     return nb
@@ -114,9 +115,9 @@ def build_notebook() -> nbf.NotebookNode:
 
 def main() -> None:
     nb = build_notebook()
-    with open("notebooks/train_yolo.ipynb", "w") as f:
+    with open("notebooks/train_cascade_yolo26.ipynb", "w") as f:
         nbf.write(nb, f)
-    print("wrote notebooks/train_yolo.ipynb")
+    print("wrote notebooks/train_cascade_yolo26.ipynb")
 
 
 if __name__ == "__main__":
