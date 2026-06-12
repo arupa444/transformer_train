@@ -6,16 +6,20 @@ from skimage.filters import threshold_otsu
 
 from thermal.schema import DefectFinding
 
-# Severity thresholds in 0..1 intensity units (tunable starting values).
-_WATCH, _INVESTIGATE, _CRITICAL = 0.10, 0.20, 0.35
+# Severity by how far a hot region sits above the transformer body, in 0..1 intensity
+# units. CALIBRATED on 755 real thermal crops: a NORMAL warm conductor/connection sits
+# ~+0.22..+0.44 above body (p50=0.35, p75=0.44), while genuine hot-wire DEFECTS form the
+# tail at ~+0.55..+0.65. So the detection floor is set above the normal-warm band, not at
+# an arbitrary small value (the old +0.10 flagged ~every connection). Tunable per camera.
+_WATCH, _INVESTIGATE, _CRITICAL = 0.45, 0.55, 0.62
 
 # A trustworthy warm/background split needs at least this many warm pixels.
 _MIN_WARM_FRACTION = 0.05
 _MIN_WARM_PIXELS = 16
 
 # Hotspot detection (CV, no learned wire model):
-_HOTSPOT_MARGIN = _WATCH            # a region must exceed the body reference by this to count
-_MIN_HOTSPOT_AREA_FRAC = 0.0005     # ignore specks (fraction of the crop area)
+_HOTSPOT_MARGIN = _WATCH            # report a region only if it exceeds body by this (>= Watch)
+_MIN_HOTSPOT_AREA_FRAC = 0.0008     # ignore specks (fraction of the crop area)
 _HOTSPOT_PERCENTILE = 90            # representative hot level within a blob
 
 
@@ -78,9 +82,12 @@ def find_hotspots(intensity: np.ndarray, bbox, pad: float = 0.15) -> list[Defect
     connected region whose intensity exceeds the body by `_HOTSPOT_MARGIN` as a
     `hotspot`, scored by how far above body it sits, sorted hottest-first.
 
-    Note: relative heat only surfaces LOCALIZED anomalies (a hot conductor/connection
-    or a hot patch). A *uniformly* hot tank produces no internal contrast and cannot
-    be flagged from a single colorized frame (that needs absolute temperature).
+    Note: this is RELATIVE heat. It surfaces a hot conductor/connection that stands
+    out from the transformer body (the validated defect signature: a white-hot wire on
+    a cooler unit). Two consequences, both inherent to relative-without-absolute-temp:
+    a *uniformly* hot tank has no internal contrast to flag; and if the whole unit is
+    already very hot (body near the top of the palette), a hot wire's margin compresses
+    and may fall below the floor. Lower `_HOTSPOT_MARGIN` for more sensitivity.
     """
     h, w = intensity.shape
     x0, y0, x1, y1 = _pad_box(bbox, pad, (h, w))

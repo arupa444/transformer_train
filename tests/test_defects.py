@@ -6,10 +6,11 @@ from thermal.defects import severity_from_delta, find_hotspots, _pad_box
 
 
 def test_severity_buckets():
-    assert severity_from_delta(0.05) == "Normal"
-    assert severity_from_delta(0.15) == "Watch"
-    assert severity_from_delta(0.30) == "Investigate"
-    assert severity_from_delta(0.50) == "Critical"
+    # calibrated: normal warm connections (< 0.45) don't alarm; defects are the tail
+    assert severity_from_delta(0.40) == "Normal"
+    assert severity_from_delta(0.50) == "Watch"
+    assert severity_from_delta(0.58) == "Investigate"
+    assert severity_from_delta(0.70) == "Critical"
 
 
 def test_severity_nonfinite_is_normal_not_critical():
@@ -26,7 +27,7 @@ def test_pad_box_normalizes_reversed_and_clips():
 
 def test_find_hotspots_detects_hot_region():
     intensity = np.full((200, 200), 0.30, dtype=np.float32)  # warm body
-    intensity[80:100, 80:100] = 0.90                          # a hot blob
+    intensity[80:100, 80:100] = 0.95                          # a white-hot blob (delta ~0.65)
     findings = find_hotspots(intensity, (0, 0, 200, 200), pad=0.0)
     assert len(findings) >= 1
     hot = findings[0]                                         # sorted hottest-first

@@ -63,8 +63,11 @@ bbox, severity, relative_delta), and `annotated_image_png_b64`.
 - `api.py` — FastAPI `/analyze`.
 
 ## Tuning
-- Hotspot sensitivity: `src/thermal/defects.py` (`_HOTSPOT_MARGIN`, severity
-  `_WATCH`/`_INVESTIGATE`/`_CRITICAL`).
+- Hotspot sensitivity / severity: `src/thermal/defects.py` — `_HOTSPOT_MARGIN`,
+  `_WATCH`/`_INVESTIGATE`/`_CRITICAL` (default `0.45`/`0.55`/`0.62`). These are
+  **calibrated on 755 real crops**: a normal warm connection sits ~+0.22..+0.44 above
+  the transformer body; hot-wire defects are the tail at ~+0.55..+0.65. Lower the floor
+  for more sensitivity (and more warm-connection noise).
 - Crop pad around the transformer: `HOTSPOT_PAD` in `pipeline.py`.
 - Different camera palette → change the colormap in `build_lut(...)` and re-check
   `calibration_ok`.

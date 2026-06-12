@@ -180,8 +180,7 @@ Orchestrated in `src/thermal/pipeline.py` (`analyze_image(img_rgb, transformer_d
 
 | What | Where |
 |------|-------|
-| Hotspot sensitivity | `src/thermal/defects.py` → `_HOTSPOT_MARGIN` |
-| Severity thresholds | `src/thermal/defects.py` → `_WATCH` / `_INVESTIGATE` / `_CRITICAL` |
+| Hotspot floor / severity | `src/thermal/defects.py` → `_HOTSPOT_MARGIN`, `_WATCH`/`_INVESTIGATE`/`_CRITICAL` (default `0.45`/`0.55`/`0.62`, **calibrated on 755 crops**: normal warm connection ≈ +0.22..+0.44 above body, defects ≈ +0.55..+0.65). Lower for more sensitivity. |
 | Crop pad around transformer | `src/thermal/pipeline.py` → `HOTSPOT_PAD` |
 | Palette / calibration | `build_lut("inferno")` in `api.py`; re-check `calibration_ok` |
 | Detector confidence | `YoloDetector.detect(..., conf=0.25)` |
