@@ -7,9 +7,11 @@ from thermal.preprocess import preprocess
 
 # Median Lab-distance above which we consider the palette mismatched.
 CALIBRATION_DIST_THRESHOLD = 20.0
-# Pad fraction around a detected transformer before scanning for hotspots, so
-# conductors/bushings just outside the tank box are included.
-HOTSPOT_PAD = 0.15
+# Pad fraction around a detected transformer before scanning for hotspots.
+# Conductors/connections frequently sit ABOVE the tank box, so a generous pad is
+# needed to cover them (validated on real full-frame inference: 0.15 missed an
+# overhead hot connection that 0.30 catches).
+HOTSPOT_PAD = 0.30
 
 
 def analyze_image(img_rgb: np.ndarray, transformer_detector,
