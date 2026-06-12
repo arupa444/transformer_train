@@ -16,8 +16,14 @@ pytest -q          # all CV + API tests pass without a model
 ## Get a model
 1. Label images with **labelImg** (classes: `transformer`, `wire`) — see
    `docs/annotation-guide.md`.
-2. Train on Colab — open `notebooks/train_yolo.ipynb`, run all cells.
-3. Download `best.pt` into `models/`.
+2. Consolidate annotators → clean YOLO dataset:
+   - `python scripts/analyze_annotations.py` — class-frequency + label-health report.
+   - `python scripts/build_dataset.py` — merges all annotators, remaps labels by
+     name to `transformer`/`wire`, drops degenerate boxes, applies the CLAHE
+     preprocessing, and writes a seeded train/valid split + `data.yaml`.
+3. Train on Colab — zip `YOLO_thermal/` and open `notebooks/train_yolo.ipynb`
+   (**YOLO26x**), run all cells.
+4. Download `best.pt` into `models/`.
 
 ## Run the API
 ```bash
@@ -32,14 +38,17 @@ Returns JSON: `calibration_ok`, `defects[]` (component, bbox, severity,
 relative_delta), and `annotated_image_png_b64` (base64 PNG with boxes).
 
 ## How it works
-1. **Detector** (`src/thermal/detector.py`) finds `transformer` and `wire` boxes.
-2. **Colormap** (`src/thermal/colormap.py`) inverts the iron palette to a 0–1 heat map.
-3. **Defects** (`src/thermal/defects.py`): a wire much hotter than its siblings,
+1. **Preprocess** (`src/thermal/preprocess.py`) CLAHE-enhances local contrast.
+   The detector trains and infers on this same enhanced image.
+2. **Detector** (`src/thermal/detector.py`) finds `transformer` and `wire` boxes.
+3. **Colormap** (`src/thermal/colormap.py`) inverts the iron palette to a 0–1 heat
+   map — computed on the **raw** image so relative temperatures stay true.
+4. **Defects** (`src/thermal/defects.py`): a wire much hotter than its siblings,
    or a localized hotspot on the transformer body (background pixels inside the
    box are excluded via an Otsu split), is flagged; severity scales with the gap.
-4. **Report** (`src/thermal/report.py`) draws boxes + emits JSON.
+5. **Report** (`src/thermal/report.py`) draws boxes + emits JSON.
 
-The **pipeline** (`src/thermal/pipeline.py`) chains steps 1→4, and the shared
+The **pipeline** (`src/thermal/pipeline.py`) chains steps 1→5, and the shared
 `Detection` / `DefectFinding` types live in `src/thermal/schema.py`.
 
 ## Tuning

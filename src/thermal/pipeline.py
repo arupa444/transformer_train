@@ -1,6 +1,7 @@
 import numpy as np
 from thermal.colormap import ColorToHeat
 from thermal.defects import analyze_wires, analyze_transformer
+from thermal.preprocess import preprocess
 
 # Median Lab-distance above which we consider the palette mismatched.
 CALIBRATION_DIST_THRESHOLD = 20.0
@@ -11,8 +12,10 @@ def analyze_image(img_rgb: np.ndarray, detector,
     """Run the full pipeline. Returns (findings, intensity_map, calibration_ok).
 
     `detector` is any object exposing `detect(img_rgb) -> list[Detection]`.
+    The detector sees the CLAHE-preprocessed image (matching training), while
+    heat analysis uses the raw palette so relative temperatures stay true.
     """
-    dets = detector.detect(img_rgb)
+    dets = detector.detect(preprocess(img_rgb))
     intensity, dist = c2h.to_intensity(img_rgb)
     calibration_ok = bool(np.median(dist) < CALIBRATION_DIST_THRESHOLD)
 
