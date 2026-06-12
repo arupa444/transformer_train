@@ -1,5 +1,5 @@
 import numpy as np
-from thermal.detector import TransformerDetector
+from thermal.detector import YoloDetector
 
 
 class _FakeBox:
@@ -24,7 +24,7 @@ class _FakeYOLO:
 
 
 def test_detector_translates_yolo_output():
-    det = TransformerDetector.__new__(TransformerDetector)  # skip __init__
+    det = YoloDetector.__new__(YoloDetector)  # skip __init__
     det.model = _FakeYOLO()
     det.names = _FakeYOLO.names
     img = np.zeros((60, 60, 3), dtype=np.uint8)

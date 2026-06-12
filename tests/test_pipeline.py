@@ -8,20 +8,43 @@ class FakeDetector:
     """Returns fixed detections regardless of input."""
     def __init__(self, dets):
         self._dets = dets
+
     def detect(self, img_rgb, conf=0.25):
         return self._dets
 
 
-def test_analyze_image_returns_findings_and_calibration():
-    img = np.zeros((100, 100, 3), dtype=np.uint8)  # all black -> low intensity
-    detector = FakeDetector([
-        Detection("transformer", (0, 0, 100, 100)),
+def test_cascade_returns_transformer_and_wire_findings():
+    img = np.zeros((100, 100, 3), dtype=np.uint8)
+    transformer_det = FakeDetector([Detection("transformer", (0, 0, 100, 100))])
+    wire_det = FakeDetector([
         Detection("wire", (10, 10, 20, 90)),
         Detection("wire", (40, 10, 50, 90)),
     ])
     c2h = ColorToHeat(build_lut("inferno"))
-    findings, intensity, calib_ok = analyze_image(img, detector, c2h)
+    findings, intensity, calib_ok = analyze_image(img, transformer_det, wire_det, c2h)
     assert intensity.shape == (100, 100)
-    components = sorted({f.component for f in findings})
-    assert components == ["transformer", "wire"]
+    assert sorted({f.component for f in findings}) == ["transformer", "wire"]
     assert isinstance(calib_ok, bool)
+
+
+def test_wire_boxes_mapped_back_to_full_frame():
+    # transformer at (50,50,150,150); pad 0.15 -> crop origin (35,35). A wire detected
+    # at crop-local (5,5,15,15) must map back to full-frame (40,40,50,50).
+    img = np.zeros((200, 200, 3), dtype=np.uint8)
+    transformer_det = FakeDetector([Detection("transformer", (50, 50, 150, 150))])
+    wire_det = FakeDetector([
+        Detection("wire", (5, 5, 15, 15)),
+        Detection("wire", (20, 20, 30, 30)),
+    ])
+    c2h = ColorToHeat(build_lut("inferno"))
+    findings, _, _ = analyze_image(img, transformer_det, wire_det, c2h)
+    wire_boxes = {f.bbox for f in findings if f.component == "wire"}
+    assert (40, 40, 50, 50) in wire_boxes
+    assert (55, 55, 65, 65) in wire_boxes
+
+
+def test_no_transformer_means_no_findings():
+    img = np.zeros((100, 100, 3), dtype=np.uint8)
+    findings, _, _ = analyze_image(img, FakeDetector([]), FakeDetector([]),
+                                   ColorToHeat(build_lut("inferno")))
+    assert findings == []

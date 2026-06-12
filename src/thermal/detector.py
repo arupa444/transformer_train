@@ -5,7 +5,10 @@ from thermal.schema import Detection
 _DEFAULT_CONF = 0.25
 
 
-class TransformerDetector:
+class YoloDetector:
+    """Generic single-model YOLO wrapper -> list[Detection]. Used for BOTH cascade
+    stages: one instance loads the transformer weights, another the wire weights."""
+
     def __init__(self, weights_path: str):
         from ultralytics import YOLO  # lazy import keeps torch out of the test path
         self.model = YOLO(weights_path)

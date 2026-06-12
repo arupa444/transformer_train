@@ -8,12 +8,11 @@ from api import create_app
 
 
 class FakeDetector:
+    def __init__(self, dets):
+        self._dets = dets
+
     def detect(self, img_rgb, conf=0.25):
-        return [
-            Detection("transformer", (0, 0, 100, 100)),
-            Detection("wire", (10, 10, 20, 90)),
-            Detection("wire", (40, 10, 50, 90)),
-        ]
+        return self._dets
 
 
 def _png_bytes():
@@ -23,7 +22,12 @@ def _png_bytes():
 
 
 def _make_client():
-    app = create_app(FakeDetector(), ColorToHeat(build_lut("inferno")))
+    transformer_det = FakeDetector([Detection("transformer", (0, 0, 100, 100))])
+    wire_det = FakeDetector([
+        Detection("wire", (10, 10, 20, 90)),
+        Detection("wire", (40, 10, 50, 90)),
+    ])
+    app = create_app(transformer_det, wire_det, ColorToHeat(build_lut("inferno")))
     return TestClient(app)
 
 

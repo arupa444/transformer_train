@@ -9,8 +9,8 @@ from thermal.pipeline import analyze_image
 from thermal.report import annotate, to_json
 
 
-def create_app(detector, c2h: ColorToHeat) -> FastAPI:
-    app = FastAPI(title="Transformer Thermal Defect Classifier")
+def create_app(transformer_detector, wire_detector, c2h: ColorToHeat) -> FastAPI:
+    app = FastAPI(title="Transformer Thermal Defect Classifier (cascade)")
 
     @app.post("/analyze")
     async def analyze(file: UploadFile = File(...)):
@@ -20,24 +20,25 @@ def create_app(detector, c2h: ColorToHeat) -> FastAPI:
             raise HTTPException(status_code=422, detail="could not decode image")
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
 
-        findings, _intensity, calib_ok = analyze_image(img_rgb, detector, c2h)
+        findings, _intensity, calib_ok = analyze_image(
+            img_rgb, transformer_detector, wire_detector, c2h)
         annotated = annotate(img_bgr, findings)
         encode_ok, buf = cv2.imencode(".png", annotated)
         if not encode_ok:
             raise HTTPException(status_code=500, detail="failed to encode annotated image")
-        b64 = base64.b64encode(buf.tobytes()).decode()
-
         return {
             "calibration_ok": calib_ok,
             "defects": to_json(findings),
-            "annotated_image_png_b64": b64,
+            "annotated_image_png_b64": base64.b64encode(buf.tobytes()).decode(),
         }
 
     return app
 
 
 # Default app for `uvicorn api:app`. Guarded so tests can import without weights.
-_weights = os.environ.get("THERMAL_WEIGHTS", "models/best.pt")
-if os.path.exists(_weights):
-    from thermal.detector import TransformerDetector
-    app = create_app(TransformerDetector(_weights), ColorToHeat(build_lut("inferno")))
+_transformer_w = os.environ.get("THERMAL_TRANSFORMER_WEIGHTS", "models/transformer.pt")
+_wire_w = os.environ.get("THERMAL_WIRE_WEIGHTS", "models/wire.pt")
+if os.path.exists(_transformer_w) and os.path.exists(_wire_w):
+    from thermal.detector import YoloDetector
+    app = create_app(YoloDetector(_transformer_w), YoloDetector(_wire_w),
+                     ColorToHeat(build_lut("inferno")))
