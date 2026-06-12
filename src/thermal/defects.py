@@ -1,19 +1,22 @@
 import math
 
+import cv2
 import numpy as np
 from skimage.filters import threshold_otsu
-from thermal.schema import Detection, DefectFinding
+
+from thermal.schema import DefectFinding
 
 # Severity thresholds in 0..1 intensity units (tunable starting values).
 _WATCH, _INVESTIGATE, _CRITICAL = 0.10, 0.20, 0.35
 
-# Percentile used as a region's representative "hot" level (tunable).
-_WIRE_HEAT_PERCENTILE = 90
-_TRANSFORMER_HOTSPOT_PERCENTILE = 99
-
 # A trustworthy warm/background split needs at least this many warm pixels.
 _MIN_WARM_FRACTION = 0.05
 _MIN_WARM_PIXELS = 16
+
+# Hotspot detection (CV, no learned wire model):
+_HOTSPOT_MARGIN = _WATCH            # a region must exceed the body reference by this to count
+_MIN_HOTSPOT_AREA_FRAC = 0.0005     # ignore specks (fraction of the crop area)
+_HOTSPOT_PERCENTILE = 90            # representative hot level within a blob
 
 
 def severity_from_delta(delta: float) -> str:
@@ -28,51 +31,29 @@ def severity_from_delta(delta: float) -> str:
     return "Critical"
 
 
-def _crop(intensity: np.ndarray, bbox: tuple[int, int, int, int]) -> np.ndarray:
-    h, w = intensity.shape
-    x1, y1, x2, y2 = bbox
-    x1, x2 = min(x1, x2), max(x1, x2)   # normalize a reversed bbox before clamping
-    y1, y2 = min(y1, y2), max(y1, y2)
-    x1 = max(0, min(int(x1), w - 1))
-    y1 = max(0, min(int(y1), h - 1))
-    x2 = max(x1 + 1, min(int(x2), w))
-    y2 = max(y1 + 1, min(int(y2), h))
-    return intensity[y1:y2, x1:x2]
-
-
-def _wire_heat(intensity: np.ndarray, bbox: tuple[int, int, int, int],
-               pct: int = _WIRE_HEAT_PERCENTILE) -> float:
-    return float(np.percentile(_crop(intensity, bbox), pct))
-
-
-def analyze_wires(intensity: np.ndarray,
-                  wires: list[Detection]) -> list[DefectFinding]:
-    """Compare each wire's heat to the median of all wires. Needs >= 2 wires."""
-    if len(wires) < 2:
-        return []
-    heats = [_wire_heat(intensity, d.bbox) for d in wires]
-    reference = float(np.median(heats))
-    findings = []
-    for d, h in zip(wires, heats):
-        delta = h - reference
-        findings.append(DefectFinding("wire", d.bbox,
-                                       severity_from_delta(delta), delta))
-    return findings
+def _pad_box(bbox, pad: float, shape) -> tuple[int, int, int, int]:
+    """Pad a bbox by `pad` of its size on each side, clipped to the image. Normalizes
+    a reversed bbox. The pad lets the crop include conductors/bushings just outside
+    the tank box."""
+    h, w = shape
+    x0, y0, x1, y1 = bbox
+    x0, x1 = min(x0, x1), max(x0, x1)
+    y0, y1 = min(y0, y1), max(y0, y1)
+    px, py = int(round((x1 - x0) * pad)), int(round((y1 - y0) * pad))
+    return (max(0, int(x0) - px), max(0, int(y0) - py),
+            min(w, int(x1) + px), min(h, int(y1) + py))
 
 
 def _body_reference(flat: np.ndarray) -> float:
     """Median intensity of the warm (equipment) pixels.
 
-    The transformer detection box usually contains cold background (foliage,
-    sky) around the unit. We split warm equipment from cold background with an
-    Otsu threshold and take the median of the warm side, so background cannot
-    drag the reference down and inflate the hotspot delta into a false alarm.
-    Falls back to the overall median when the warm cluster is too small to trust
-    (Known edge: a crop that is almost entirely cold background with a 1-5% warm
-    sliver falls back to the cold median and can over-flag — but that only arises
-    from a degenerate transformer box, i.e. a bad upstream detection, not a real
-    transformer crop which is warm-body-dominant.)
-    """
+    The transformer detection box usually contains cold background (foliage, sky)
+    around the unit. We split warm equipment from cold background with an Otsu
+    threshold and take the median of the warm side, so background cannot drag the
+    reference down and inflate the hotspot delta into a false alarm. Falls back to
+    the overall median when the warm cluster is too small to trust (only happens on
+    a near-all-background crop, i.e. a bad upstream detection — a real transformer
+    crop is warm-body-dominant)."""
     if flat.size == 0:
         return 0.0
     if np.ptp(flat) == 0:  # single value: nothing to split
@@ -88,17 +69,47 @@ def _body_reference(flat: np.ndarray) -> float:
     return float(np.median(warm))
 
 
-def analyze_transformer(intensity: np.ndarray,
-                        transformer: Detection) -> DefectFinding:
-    """Flag a localized hotspot on the transformer relative to its body.
+def find_hotspots(intensity: np.ndarray, bbox, pad: float = 0.15) -> list[DefectFinding]:
+    """Find localized hot regions inside a transformer ROI by RELATIVE heat — no
+    learned wire detector needed.
 
-    The box often includes cold background, so the body reference is estimated
-    from the warm equipment pixels only (see _body_reference)."""
-    crop = _crop(intensity, transformer.bbox)
+    The bbox (a detected transformer) is padded to include conductors/bushings just
+    outside the tank. Within it we estimate the warm-body reference, then take every
+    connected region whose intensity exceeds the body by `_HOTSPOT_MARGIN` as a
+    `hotspot`, scored by how far above body it sits, sorted hottest-first.
+
+    Note: relative heat only surfaces LOCALIZED anomalies (a hot conductor/connection
+    or a hot patch). A *uniformly* hot tank produces no internal contrast and cannot
+    be flagged from a single colorized frame (that needs absolute temperature).
+    """
+    h, w = intensity.shape
+    x0, y0, x1, y1 = _pad_box(bbox, pad, (h, w))
+    crop = intensity[y0:y1, x0:x1]
+    if crop.size == 0:
+        return []
     body = _body_reference(crop.ravel())
-    # method="higher" makes p99 land on a real pixel value, not an interpolated
-    # one, so a tiny hotspot (~1% of the crop) is not diluted away.
-    hot = float(np.percentile(crop, _TRANSFORMER_HOTSPOT_PERCENTILE, method="higher"))
-    delta = hot - body
-    return DefectFinding("transformer", transformer.bbox,
-                         severity_from_delta(delta), delta)
+    mask = (crop >= body + _HOTSPOT_MARGIN).astype(np.uint8)
+    if int(mask.sum()) == 0:
+        return []
+    crop_area = int(crop.shape[0]) * int(crop.shape[1])
+    min_area = max(4, int(crop_area * _MIN_HOTSPOT_AREA_FRAC))
+    n_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+
+    findings = []
+    for i in range(1, n_labels):  # 0 is background
+        area = int(stats[i, cv2.CC_STAT_AREA])
+        if area < min_area:
+            continue
+        cx = int(stats[i, cv2.CC_STAT_LEFT])
+        cy = int(stats[i, cv2.CC_STAT_TOP])
+        cw = int(stats[i, cv2.CC_STAT_WIDTH])
+        ch = int(stats[i, cv2.CC_STAT_HEIGHT])
+        sub = crop[cy:cy + ch, cx:cx + cw]
+        region = sub[labels[cy:cy + ch, cx:cx + cw] == i]
+        delta = float(np.percentile(region, _HOTSPOT_PERCENTILE)) - body
+        findings.append(DefectFinding(
+            "hotspot", (x0 + cx, y0 + cy, x0 + cx + cw, y0 + cy + ch),
+            severity_from_delta(delta), delta))
+
+    findings.sort(key=lambda f: f.relative_delta, reverse=True)  # hottest first
+    return findings

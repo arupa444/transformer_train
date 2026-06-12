@@ -1,8 +1,8 @@
-# Transformer Thermal Defect Classifier (2-model cascade)
+# Transformer Thermal Defect Classifier
 
-Detects overheating wires and transformer hotspots in colorized thermal images.
-A **cascade of two YOLO26x detectors** localizes the parts; a classical-CV layer
-reads *relative* heat and flags defects.
+Detects overheating conductors/connections and hot spots on transformers from
+colorized thermal images. One **YOLO26x detector** localizes the transformer; a
+classical-CV layer reads *relative* heat inside it and flags hotspots.
 
 > Output is **relative severity** (Normal/Watch/Investigate/Critical), not absolute °C —
 > the input is colorized screenshots with no embedded temperature.
@@ -11,60 +11,60 @@ reads *relative* heat and flags defects.
 
 ```
 image → CLAHE → [YOLO26x transformer] → for each transformer:
-                     crop + 0.15 pad → [YOLO26x wire] → map boxes back
+                     pad 0.15 + scan crop for hot regions (relative heat, raw palette)
                                             ↓
-        relative-heat CV (raw palette): transformer hotspot + wire-vs-siblings → defects
+                        connected-component hotspots → severity by heat-above-body
 ```
 
-Two single-class detectors (not one multi-class) because: it restricts wire
-detection to the transformer region (kills foliage/background false positives),
-matches the wire model's train scale to the crop it runs on, and lets each stage
-be tuned independently. The detector only localizes; the CV layer decides defects.
+**One learned model, not two.** The transformer is a big, consistent object → YOLO
+nails it. Wires are thin, densely-clustered conductors that a detector could not learn
+on this dataset — so hot conductors/connections are found by **CV** (a region hotter
+than the transformer body), which is exactly the defect signal and needs no training.
+A *uniformly* hot tank can't be flagged from relative heat alone (needs absolute °C).
 
 ## Setup
 ```bash
 uv venv && source .venv/bin/activate
 uv pip install -e ".[dev]"
-pytest -q          # CV core + cascade pipeline + API tests pass without any model
+pytest -q          # CV core + pipeline + API tests pass without any model
 ```
 
-## Get the two models
+## Get the model
 1. **Label** with labelImg — classes `transformer`, `wire` (see `docs/annotation-guide.md`).
-2. **Build datasets** (dedup + leakage-safe split + adaptive CLAHE + transformer-anchored
-   wire crops):
+   (The `wire` boxes still feed the dataset build; only the *transformer* detector is trained.)
+2. **Build datasets** (dedup + leakage-safe split + adaptive CLAHE):
    ```bash
    python -m thermal.data_prep.build --subset both
-   # -> /Volumes/dronisight/yolo_thermal_transformer  and  /Volumes/dronisight/Yolo_thermal_wire
+   # -> /Volumes/dronisight/yolo_thermal_transformer  (+ Yolo_thermal_wire, currently unused)
    ```
-3. **Train + test** on Colab — zip the two dataset folders, upload to Google Drive, and
+3. **Train + test** on Colab — zip `yolo_thermal_transformer`, upload to Google Drive, and
    run `notebooks/train_cascade_yolo26.ipynb` (mounts Drive → unzips → clones this repo →
-   trains both YOLO26x → evaluates → runs the cascade on test frames). Weights are saved to
-   Drive; drop `transformer.pt` + `wire.pt` into `models/`.
+   trains the YOLO26x transformer detector → evaluates → runs the full pipeline on test
+   frames). The weights are saved to Drive; drop `transformer.pt` into `models/`.
 
 ## Run the API
 ```bash
-uv pip install -e ".[inference]"   # ultralytics/torch for the real detectors
-THERMAL_TRANSFORMER_WEIGHTS=models/transformer.pt \
-THERMAL_WIRE_WEIGHTS=models/wire.pt \
-uvicorn api:app --reload
+uv pip install -e ".[inference]"   # ultralytics/torch for the real detector
+THERMAL_TRANSFORMER_WEIGHTS=models/transformer.pt uvicorn api:app --reload
 ```
-`POST /analyze` an image → JSON: `calibration_ok`, `defects[]` (component, bbox,
-severity, relative_delta), and `annotated_image_png_b64`.
+`POST /analyze` an image → JSON: `calibration_ok`, `defects[]` (component=`hotspot`,
+bbox, severity, relative_delta), and `annotated_image_png_b64`.
 
 ## Code map
 - `src/thermal/data_prep/` — VOC parse + canonical names, **content-hash dedup/merge**
   (collapses byte-identical duplicates, unions partial labels), capture-time grouping,
-  leakage-safe split, adaptive CLAHE, transformer-anchored wire crops, build orchestrator.
+  leakage-safe split, adaptive CLAHE, build orchestrator.
 - `src/thermal/preprocess.py` — adaptive CLAHE (same transform at train + inference).
-- `src/thermal/detector.py` — `YoloDetector`: generic single-model wrapper (one per stage).
+- `src/thermal/detector.py` — `YoloDetector`: generic single-model wrapper.
 - `src/thermal/colormap.py` — iron palette → 0–1 heat map (on the raw image).
-- `src/thermal/defects.py` — relative hotspot + wire-vs-siblings + severity.
-- `src/thermal/pipeline.py` — the cascade (`analyze_image`).
+- `src/thermal/defects.py` — `find_hotspots`: CV hot-region detection + severity.
+- `src/thermal/pipeline.py` — `analyze_image`: transformer detect → CV hotspots.
 - `src/thermal/report.py` — annotated image + JSON.
 - `api.py` — FastAPI `/analyze`.
 
 ## Tuning
-Severity thresholds: `src/thermal/defects.py` (`_WATCH`/`_INVESTIGATE`/`_CRITICAL`).
-Wire crop pad: `WIRE_CROP_PAD` in `pipeline.py` (build) and `data_prep/build.py` (must match).
-If a different camera palette is used, change the colormap in `build_lut(...)` and re-check
-`calibration_ok`.
+- Hotspot sensitivity: `src/thermal/defects.py` (`_HOTSPOT_MARGIN`, severity
+  `_WATCH`/`_INVESTIGATE`/`_CRITICAL`).
+- Crop pad around the transformer: `HOTSPOT_PAD` in `pipeline.py`.
+- Different camera palette → change the colormap in `build_lut(...)` and re-check
+  `calibration_ok`.

@@ -9,8 +9,8 @@ from thermal.pipeline import analyze_image
 from thermal.report import annotate, to_json
 
 
-def create_app(transformer_detector, wire_detector, c2h: ColorToHeat) -> FastAPI:
-    app = FastAPI(title="Transformer Thermal Defect Classifier (cascade)")
+def create_app(transformer_detector, c2h: ColorToHeat) -> FastAPI:
+    app = FastAPI(title="Transformer Thermal Defect Classifier")
 
     @app.post("/analyze")
     async def analyze(file: UploadFile = File(...)):
@@ -23,7 +23,7 @@ def create_app(transformer_detector, wire_detector, c2h: ColorToHeat) -> FastAPI
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
 
         findings, _intensity, calib_ok = analyze_image(
-            img_rgb, transformer_detector, wire_detector, c2h)
+            img_rgb, transformer_detector, c2h)
         annotated = annotate(img_bgr, findings)
         encode_ok, buf = cv2.imencode(".png", annotated)
         if not encode_ok:
@@ -39,8 +39,6 @@ def create_app(transformer_detector, wire_detector, c2h: ColorToHeat) -> FastAPI
 
 # Default app for `uvicorn api:app`. Guarded so tests can import without weights.
 _transformer_w = os.environ.get("THERMAL_TRANSFORMER_WEIGHTS", "models/transformer.pt")
-_wire_w = os.environ.get("THERMAL_WIRE_WEIGHTS", "models/wire.pt")
-if os.path.exists(_transformer_w) and os.path.exists(_wire_w):
+if os.path.exists(_transformer_w):
     from thermal.detector import YoloDetector
-    app = create_app(YoloDetector(_transformer_w), YoloDetector(_wire_w),
-                     ColorToHeat(build_lut("inferno")))
+    app = create_app(YoloDetector(_transformer_w), ColorToHeat(build_lut("inferno")))

@@ -15,68 +15,61 @@ class FakeDetector:
         return self._dets
 
 
-def _png_bytes():
-    img = np.zeros((100, 100, 3), dtype=np.uint8)
-    ok, buf = cv2.imencode(".png", img)
+def _make_client(dets=None):
+    if dets is None:
+        dets = [Detection("transformer", (0, 0, 120, 120))]
+    app = create_app(FakeDetector(dets), ColorToHeat(build_lut("inferno")))
+    return TestClient(app)
+
+
+def _png(img_rgb):
+    # encode the BGR bytes so the API's decode(BGR)->RGB round-trips back to img_rgb
+    ok, buf = cv2.imencode(".png", cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR))
     return buf.tobytes()
 
 
-def _make_client():
-    transformer_det = FakeDetector([Detection("transformer", (0, 0, 100, 100))])
-    wire_det = FakeDetector([
-        Detection("wire", (10, 10, 20, 90)),
-        Detection("wire", (40, 10, 50, 90)),
-    ])
-    app = create_app(transformer_det, wire_det, ColorToHeat(build_lut("inferno")))
-    return TestClient(app)
+def _png_black():
+    return _png(np.zeros((120, 120, 3), dtype=np.uint8))
+
+
+def _png_with_hotspot():
+    # mostly a mid-palette color with a small hottest-palette patch -> a real hotspot
+    lut = (build_lut("inferno") * 255).astype(np.uint8)  # RGB, cold->hot
+    img = np.empty((120, 120, 3), dtype=np.uint8)
+    img[:] = lut[128]            # warm body
+    img[50:70, 50:70] = lut[-1]  # hottest color -> high intensity patch
+    return _png(img)
 
 
 def test_analyze_endpoint_returns_report():
     client = _make_client()
-    resp = client.post("/analyze", files={"file": ("t.png", _png_bytes(), "image/png")})
+    resp = client.post("/analyze", files={"file": ("t.png", _png_black(), "image/png")})
     assert resp.status_code == 200
     body = resp.json()
-    assert "defects" in body
-    assert "calibration_ok" in body
-    assert "annotated_image_png_b64" in body
-    # annotated image must be valid base64-decodable PNG bytes
+    assert "defects" in body and "calibration_ok" in body and "annotated_image_png_b64" in body
     raw = base64.b64decode(body["annotated_image_png_b64"])
     assert raw[:8] == b"\x89PNG\r\n\x1a\n"
 
 
-def test_analyze_endpoint_defects_content():
-    """FakeDetector returns 1 transformer + 2 wires, so findings must be 3
-    entries with the expected component values and required keys."""
+def test_analyze_endpoint_flags_hotspot():
     client = _make_client()
-    resp = client.post("/analyze", files={"file": ("t.png", _png_bytes(), "image/png")})
+    resp = client.post("/analyze", files={"file": ("hot.png", _png_with_hotspot(), "image/png")})
     assert resp.status_code == 200
     defects = resp.json()["defects"]
-    # 2 wire findings + 1 transformer finding = 3 total
-    assert len(defects) == 3
-    components = [d["component"] for d in defects]
-    assert components.count("wire") == 2
-    assert components.count("transformer") == 1
-    # every entry must have the required schema keys
+    assert len(defects) >= 1
     for d in defects:
-        assert "component" in d
-        assert "bbox" in d
-        assert "severity" in d
-        assert "relative_delta" in d
+        assert set(d) >= {"component", "bbox", "severity", "relative_delta"}
+        assert d["component"] == "hotspot"
         assert isinstance(d["bbox"], list) and len(d["bbox"]) == 4
 
 
 def test_analyze_invalid_image_returns_422():
-    """Uploading non-image bytes must return HTTP 422, not 200."""
     client = _make_client()
-    resp = client.post(
-        "/analyze",
-        files={"file": ("bad.png", b"not an image", "image/png")},
-    )
+    resp = client.post("/analyze", files={"file": ("bad.png", b"not an image", "image/png")})
     assert resp.status_code == 422
 
 
 def test_analyze_empty_upload_returns_422():
-    """Empty file must return 422, not 500 (cv2.imdecode raises on empty input)."""
     client = _make_client()
     resp = client.post("/analyze", files={"file": ("empty.png", b"", "image/png")})
     assert resp.status_code == 422
