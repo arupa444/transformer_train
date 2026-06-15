@@ -26,19 +26,20 @@ _HOTSPOT_MARGIN = _WATCH            # report a region only if it exceeds body by
 _MIN_HOTSPOT_AREA_FRAC = 0.0008     # ignore specks (fraction of the crop area)
 _HOTSPOT_PERCENTILE = 90            # representative hot level within a blob
 
-# Shape gate — grade only the transformer's own WIRING (thin conductors/leads coming out
-# of the tank + small bushings/joints), and reject big SOLID hot blobs that are unrelated
-# objects swept into the padded ROI: a parked vehicle, a sunlit roof, a warm wall. A
-# conductor is thin/elongated; a connection is small; one of those background objects is
-# large, roughly square, and fills its bounding box.
-_MAX_BLOB_AREA_FRAC = 0.12   # a hot blob larger than this share of the ROI is "object-sized"
-_MIN_ELONGATION = 2.2        # long/short side ratio that reads as a wire/lead (keep if >=)
-_MAX_SOLID_EXTENT = 0.55     # filled fraction above which a big blob is a solid surface (drop)
+# Shape gate — a reported hotspot must look like WIRING: a thin/elongated conductor or
+# lead, or a small compact connection/bushing. ANY fatter solid hot region is rejected —
+# the transformer's own body fill, the ground, a parked vehicle, a sunlit roof, a wall.
+# That's the fix for "anything hot becomes a Critical box": only wire-shaped heat is graded.
+# A blob is kept iff it is elongated OR thin (low bbox fill) OR small.
+_MIN_ELONGATION = 2.0        # long/short side ratio of a conductor/lead
+_MAX_THIN_EXTENT = 0.45      # a thin/diagonal wire fills <= this fraction of its bbox
+_SMALL_FRAC = 0.03           # a compact connection/bushing is <= this share of the ROI
 
-# Conductors/bushings sit ABOVE the tank and exit upward toward the overhead line; nearby
-# false positives (parked vehicle, ground clutter) sit to the SIDE/BELOW. So pad the ROI
-# generously upward but tightly on the sides/bottom (multipliers on the base pad).
-_PAD_TOP, _PAD_SIDE, _PAD_BOTTOM = 1.5, 0.4, 0.27
+# Conductors/bushings sit ABOVE the tank; nearby false positives (parked vehicle, ground
+# clutter) sit to the SIDE/BELOW. Keep the validated upward coverage (base pad, x1.0) but
+# pad TIGHTLY on the sides/bottom so the ROI can't sweep in neighbours. (Multipliers on the
+# base pad; the ROI is therefore a subset of the old symmetric one, so we never ADD flags.)
+_PAD_TOP, _PAD_SIDE, _PAD_BOTTOM = 1.0, 0.4, 0.27
 
 
 def severity_from_delta(delta: float) -> str:
@@ -135,12 +136,13 @@ def find_hotspots(intensity: np.ndarray, bbox, pad: float = 0.15) -> list[Defect
         cy = int(stats[i, cv2.CC_STAT_TOP])
         cw = int(stats[i, cv2.CC_STAT_WIDTH])
         ch = int(stats[i, cv2.CC_STAT_HEIGHT])
-        # Shape gate: keep transformer wiring (thin/elongated conductors, or small compact
-        # bushings/joints), drop a big SOLID near-square blob — that's an unrelated object
-        # (vehicle / roof / wall), not the transformer's wire. See constants above.
+        # Shape gate: keep only wire-shaped heat — an elongated conductor/lead, a thin
+        # (low-fill) diagonal wire, or a small compact bushing/joint. Reject any fatter
+        # solid region (body fill / ground / vehicle / roof / wall). See constants above.
         extent = area / float(max(1, cw * ch))
         elong = max(cw, ch) / float(max(1, min(cw, ch)))
-        if area >= crop_area * _MAX_BLOB_AREA_FRAC and elong < _MIN_ELONGATION and extent > _MAX_SOLID_EXTENT:
+        wire_like = (elong >= _MIN_ELONGATION) or (extent <= _MAX_THIN_EXTENT) or (area <= crop_area * _SMALL_FRAC)
+        if not wire_like:
             continue
         sub = crop[cy:cy + ch, cx:cx + cw]
         region = sub[labels[cy:cy + ch, cx:cx + cw] == i]
