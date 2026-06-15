@@ -25,16 +25,22 @@ def test_pad_box_normalizes_reversed_and_clips():
     assert _pad_box((10, 10, 30, 30), 0.5, (100, 100)) == (0, 0, 40, 40)
 
 
-def test_find_hotspots_detects_hot_region():
+def test_find_hotspots_detects_hot_wire():
+    # a THIN white-hot conductor (wire-shaped) IS graded
     intensity = np.full((200, 200), 0.30, dtype=np.float32)  # warm body
-    intensity[80:100, 80:100] = 0.95                          # a white-hot blob (delta ~0.65)
+    intensity[40:140, 96:104] = 0.95                          # 8px-wide, 100px-tall conductor
     findings = find_hotspots(intensity, (0, 0, 200, 200), pad=0.0)
     assert len(findings) >= 1
     hot = findings[0]                                         # sorted hottest-first
     assert hot.severity == "Critical"
-    x1, y1, x2, y2 = hot.bbox
-    assert 70 <= x1 <= 85 and 70 <= y1 <= 85 and 95 <= x2 <= 110 and 95 <= y2 <= 110
     assert hot.component == "hotspot"
+
+
+def test_find_hotspots_rejects_solid_compact_blob():
+    # a solid compact hot square (a vehicle / hot object, NOT a wire) is rejected
+    intensity = np.full((200, 200), 0.30, dtype=np.float32)
+    intensity[80:120, 80:120] = 0.95                          # 40x40 solid square (elong~1, fills bbox)
+    assert find_hotspots(intensity, (0, 0, 200, 200), pad=0.0) == []
 
 
 def test_find_hotspots_none_on_uniform_crop():

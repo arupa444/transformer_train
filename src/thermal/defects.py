@@ -26,14 +26,13 @@ _HOTSPOT_MARGIN = _WATCH            # report a region only if it exceeds body by
 _MIN_HOTSPOT_AREA_FRAC = 0.0008     # ignore specks (fraction of the crop area)
 _HOTSPOT_PERCENTILE = 90            # representative hot level within a blob
 
-# Shape gate — a reported hotspot must look like WIRING: a thin/elongated conductor or
-# lead, or a small compact connection/bushing. ANY fatter solid hot region is rejected —
-# the transformer's own body fill, the ground, a parked vehicle, a sunlit roof, a wall.
-# That's the fix for "anything hot becomes a Critical box": only wire-shaped heat is graded.
-# A blob is kept iff it is elongated OR thin (low bbox fill) OR small.
-_MIN_ELONGATION = 2.0        # long/short side ratio of a conductor/lead
-_MAX_THIN_EXTENT = 0.45      # a thin/diagonal wire fills <= this fraction of its bbox
-_SMALL_FRAC = 0.03           # a compact connection/bushing is <= this share of the ROI
+# Shape gate — a reported hotspot must be WIRE-SHAPED. We test LINEARITY via PCA on the hot
+# blob's pixels: a conductor/lead is a 1-D line (one dominant axis, so sqrt(λ1/λ2) is large,
+# even when the wire runs diagonally); a parked vehicle, hot engine, roof, wall or tank-body
+# region spreads in 2-D (λ1≈λ2, ratio ~1). This is the fix for "anything hot becomes a
+# Critical box" — bbox aspect/fill couldn't tell a thin diagonal wire from a scattered blob;
+# pixel linearity can. sqrt(λ1/λ2) ≈ the line's length:width.
+_MIN_LINEARITY = 3.0         # keep a blob only if its pixels are >= 3x longer than wide (a line)
 
 # Conductors/bushings sit ABOVE the tank; nearby false positives (parked vehicle, ground
 # clutter) sit to the SIDE/BELOW. Keep the validated upward coverage (base pad, x1.0) but
@@ -136,13 +135,17 @@ def find_hotspots(intensity: np.ndarray, bbox, pad: float = 0.15) -> list[Defect
         cy = int(stats[i, cv2.CC_STAT_TOP])
         cw = int(stats[i, cv2.CC_STAT_WIDTH])
         ch = int(stats[i, cv2.CC_STAT_HEIGHT])
-        # Shape gate: keep only wire-shaped heat — an elongated conductor/lead, a thin
-        # (low-fill) diagonal wire, or a small compact bushing/joint. Reject any fatter
-        # solid region (body fill / ground / vehicle / roof / wall). See constants above.
-        extent = area / float(max(1, cw * ch))
-        elong = max(cw, ch) / float(max(1, min(cw, ch)))
-        wire_like = (elong >= _MIN_ELONGATION) or (extent <= _MAX_THIN_EXTENT) or (area <= crop_area * _SMALL_FRAC)
-        if not wire_like:
+        # Linearity gate (PCA): keep only blobs whose hot pixels lie along a line (a wire);
+        # reject 2-D-spread blobs (vehicle / hot object / roof / wall / tank body).
+        sub_labels = labels[cy:cy + ch, cx:cx + cw]
+        ys, xs = np.where(sub_labels == i)
+        if len(xs) >= 8:
+            cov = np.cov(np.vstack([xs.astype(np.float64), ys.astype(np.float64)]))
+            ev = np.linalg.eigvalsh(cov)              # ascending eigenvalues: [λ2, λ1]
+            linearity = (max(float(ev[1]), 1e-9) / max(float(ev[0]), 1e-9)) ** 0.5
+        else:
+            linearity = 0.0
+        if linearity < _MIN_LINEARITY:
             continue
         sub = crop[cy:cy + ch, cx:cx + cw]
         region = sub[labels[cy:cy + ch, cx:cx + cw] == i]
