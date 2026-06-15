@@ -84,12 +84,12 @@ Reusing the proven `trainDronisight` design, this:
 - **leakage-safe split** by capture-sequence group (train/val/test ≈ 80/15/5);
 - **adaptive CLAHE** — writes both an `orig` and a `clahe` image variant.
 
-Outputs (pole-style layout): `/Volumes/dronisight/yolo_thermal_transformer/` is the one you
+Outputs (pole-style layout): `/Volumes/Atrisol_D2/yolo_thermal_transformer/` is the one you
 train on (`Yolo_thermal_wire/` is also built but currently unused). Each has
 `images|labels/{train,val,test}/{orig,clahe}`, `data_{orig,clahe}.yaml`, `manifest.csv`,
 `dataset_meta.json`. Quick check:
 ```bash
-cat /Volumes/dronisight/yolo_thermal_transformer/dataset_meta.json
+cat /Volumes/Atrisol_D2/yolo_thermal_transformer/dataset_meta.json
 ```
 
 ---
@@ -101,7 +101,7 @@ full pipeline). You only zip one folder and upload it.
 
 ### 4a. Zip the transformer dataset and upload to Google Drive
 ```bash
-cd /Volumes/dronisight
+cd /Volumes/Atrisol_D2
 zip -r transformer.zip yolo_thermal_transformer
 ```
 Upload `transformer.zip` to your Google Drive (e.g. `MyDrive/`).

@@ -1,4 +1,4 @@
-"""Forensic analysis of the 4-annotator labelImg dataset on /Volumes/dronisight/thermal.
+"""Forensic analysis of the 4-annotator labelImg dataset on /Volumes/Atrisol_D2/thermal.
 
 Maps every YOLO .txt label through its OWN annotator's classes.txt (so class ids
 are interpreted by name, never blindly), then reports class frequency, label
@@ -8,7 +8,7 @@ import os
 import glob
 from collections import defaultdict, Counter
 
-ROOT = "/Volumes/dronisight/thermal"
+ROOT = "/Volumes/Atrisol_D2/thermal"
 IMG_EXTS = (".jpg", ".jpeg", ".JPG", ".JPEG")
 
 # Annotator label dir = the directory that contains its classes.txt.

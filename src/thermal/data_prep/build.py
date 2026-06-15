@@ -32,7 +32,7 @@ GROUP_TIME_GAP_S = 60
 WIRE_CROP_PAD = 0.15
 WIRE_MIN_VISIBLE = 0.30
 
-SSD = Path(os.environ.get("DRONISIGHT_DATA", "/Volumes/dronisight"))
+SSD = Path(os.environ.get("DRONISIGHT_DATA", "/Volumes/Atrisol_D2"))
 _THERMAL = SSD / "thermal"
 THERMAL_DIRS = [
     _THERMAL / "JUNE 11 MEM 1" / "_T_collected",

@@ -35,7 +35,7 @@ pytest -q          # CV core + pipeline + API tests pass without any model
 2. **Build datasets** (dedup + leakage-safe split + adaptive CLAHE):
    ```bash
    python -m thermal.data_prep.build --subset both
-   # -> /Volumes/dronisight/yolo_thermal_transformer  (+ Yolo_thermal_wire, currently unused)
+   # -> /Volumes/Atrisol_D2/yolo_thermal_transformer  (+ Yolo_thermal_wire, currently unused)
    ```
 3. **Train + test** on Colab — zip `yolo_thermal_transformer`, upload to Google Drive, and
    run `notebooks/train_cascade_yolo26.ipynb` (mounts Drive → unzips → clones this repo →

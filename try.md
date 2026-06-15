@@ -12,7 +12,7 @@ c2h = ColorToHeat(build_lut("inferno"))
 LOCAL = "/Users/arupanandaswain/Downloads/cascade_out"; os.makedirs(LOCAL, exist_ok=True)
 TMP = "/tmp/cascade_share"; os.makedirs(TMP, exist_ok=True)
 SEV = {"Watch":(0,200,200),"Investigate":(0,140,255),"Critical":(0,0,255)}
-T = "/Volumes/dronisight/yolo_thermal_transformer/images"
+T = "/Volumes/Atrisol_D2/yolo_thermal_transformer/images"
 
 frames = [f"{T}/test/orig/JUNE 11 MEM 4_DJI_20260411175708_0004_T.jpg",
           f"{T}/train/orig/Jun 11 Mem 2 _DJI_20260407072229_0003_T.jpg"]

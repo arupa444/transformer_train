@@ -26,7 +26,7 @@ def build_notebook() -> nbf.NotebookNode:
        "# Thermal defect classifier — train + test (YOLO26x + CV)\n"
        "**Just: Runtime → Change runtime type → GPU, then Runtime → Run all.**\n\n"
        "Only requirement: your dataset must be on Google Drive. On your Mac run\n"
-       "```bash\ncd /Volumes/dronisight\nzip -r transformer.zip yolo_thermal_transformer\n```\n"
+       "```bash\ncd /Volumes/Atrisol_D2\nzip -r transformer.zip yolo_thermal_transformer\n```\n"
        "and upload `transformer.zip` anywhere in **My Drive** (or one folder deep). This "
        "notebook auto-finds it — no paths to edit.\n\n"
        "**Architecture:** one YOLO26x detector localizes the **transformer**; hot "
