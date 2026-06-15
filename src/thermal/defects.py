@@ -26,6 +26,20 @@ _HOTSPOT_MARGIN = _WATCH            # report a region only if it exceeds body by
 _MIN_HOTSPOT_AREA_FRAC = 0.0008     # ignore specks (fraction of the crop area)
 _HOTSPOT_PERCENTILE = 90            # representative hot level within a blob
 
+# Shape gate — grade only the transformer's own WIRING (thin conductors/leads coming out
+# of the tank + small bushings/joints), and reject big SOLID hot blobs that are unrelated
+# objects swept into the padded ROI: a parked vehicle, a sunlit roof, a warm wall. A
+# conductor is thin/elongated; a connection is small; one of those background objects is
+# large, roughly square, and fills its bounding box.
+_MAX_BLOB_AREA_FRAC = 0.12   # a hot blob larger than this share of the ROI is "object-sized"
+_MIN_ELONGATION = 2.2        # long/short side ratio that reads as a wire/lead (keep if >=)
+_MAX_SOLID_EXTENT = 0.55     # filled fraction above which a big blob is a solid surface (drop)
+
+# Conductors/bushings sit ABOVE the tank and exit upward toward the overhead line; nearby
+# false positives (parked vehicle, ground clutter) sit to the SIDE/BELOW. So pad the ROI
+# generously upward but tightly on the sides/bottom (multipliers on the base pad).
+_PAD_TOP, _PAD_SIDE, _PAD_BOTTOM = 1.5, 0.4, 0.27
+
 
 def severity_from_delta(delta: float) -> str:
     if not math.isfinite(delta):   # guard NaN/inf -> never silently report Critical
@@ -39,17 +53,22 @@ def severity_from_delta(delta: float) -> str:
     return "Critical"
 
 
-def _pad_box(bbox, pad: float, shape) -> tuple[int, int, int, int]:
-    """Pad a bbox by `pad` of its size on each side, clipped to the image. Normalizes
-    a reversed bbox. The pad lets the crop include conductors/bushings just outside
-    the tank box."""
+def _pad_box(bbox, pad: float, shape,
+             top_mult: float = 1.0, side_mult: float = 1.0, bottom_mult: float = 1.0
+             ) -> tuple[int, int, int, int]:
+    """Pad a bbox by `pad` of its size, clipped to the image. Normalizes a reversed bbox.
+    The pad lets the crop include conductors/bushings just outside the tank box. The
+    per-direction multipliers (default 1.0 = symmetric) let callers bias the ROI upward,
+    where the conductors are, while keeping the sides/bottom tight."""
     h, w = shape
     x0, y0, x1, y1 = bbox
     x0, x1 = min(x0, x1), max(x0, x1)
     y0, y1 = min(y0, y1), max(y0, y1)
-    px, py = int(round((x1 - x0) * pad)), int(round((y1 - y0) * pad))
-    return (max(0, int(x0) - px), max(0, int(y0) - py),
-            min(w, int(x1) + px), min(h, int(y1) + py))
+    px = int(round((x1 - x0) * pad * side_mult))
+    py_top = int(round((y1 - y0) * pad * top_mult))
+    py_bot = int(round((y1 - y0) * pad * bottom_mult))
+    return (max(0, int(x0) - px), max(0, int(y0) - py_top),
+            min(w, int(x1) + px), min(h, int(y1) + py_bot))
 
 
 def _body_reference(flat: np.ndarray) -> float:
@@ -94,7 +113,8 @@ def find_hotspots(intensity: np.ndarray, bbox, pad: float = 0.15) -> list[Defect
     and may fall below the floor. Lower `_HOTSPOT_MARGIN` for more sensitivity.
     """
     h, w = intensity.shape
-    x0, y0, x1, y1 = _pad_box(bbox, pad, (h, w))
+    x0, y0, x1, y1 = _pad_box(bbox, pad, (h, w),
+                              top_mult=_PAD_TOP, side_mult=_PAD_SIDE, bottom_mult=_PAD_BOTTOM)
     crop = intensity[y0:y1, x0:x1]
     if crop.size == 0:
         return []
@@ -115,6 +135,13 @@ def find_hotspots(intensity: np.ndarray, bbox, pad: float = 0.15) -> list[Defect
         cy = int(stats[i, cv2.CC_STAT_TOP])
         cw = int(stats[i, cv2.CC_STAT_WIDTH])
         ch = int(stats[i, cv2.CC_STAT_HEIGHT])
+        # Shape gate: keep transformer wiring (thin/elongated conductors, or small compact
+        # bushings/joints), drop a big SOLID near-square blob — that's an unrelated object
+        # (vehicle / roof / wall), not the transformer's wire. See constants above.
+        extent = area / float(max(1, cw * ch))
+        elong = max(cw, ch) / float(max(1, min(cw, ch)))
+        if area >= crop_area * _MAX_BLOB_AREA_FRAC and elong < _MIN_ELONGATION and extent > _MAX_SOLID_EXTENT:
+            continue
         sub = crop[cy:cy + ch, cx:cx + cw]
         region = sub[labels[cy:cy + ch, cx:cx + cw] == i]
         delta = float(np.percentile(region, _HOTSPOT_PERCENTILE)) - body
